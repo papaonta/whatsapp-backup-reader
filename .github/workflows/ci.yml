@@ -12,17 +12,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: "22"
           cache: "npm"
 
       # Cache Electron binaries to avoid download failures
       - name: Cache Electron
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/cache/electron
           key: electron-${{ runner.os }}-${{ hashFiles('**/package-lock.json') }}
@@ -42,17 +42,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: "22"
           cache: "npm"
 
       # Cache Electron binaries to avoid download failures
       - name: Cache Electron
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/cache/electron
           key: electron-${{ runner.os }}-${{ hashFiles('**/package-lock.json') }}
@@ -75,17 +75,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: "22"
           cache: "npm"
 
       # Cache Electron binaries to avoid download failures
       - name: Cache Electron
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/cache/electron
           key: electron-${{ runner.os }}-${{ hashFiles('**/package-lock.json') }}
