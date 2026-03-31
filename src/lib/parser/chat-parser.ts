@@ -51,6 +51,48 @@ const MEDIA_INDICATORS = [
 	'<媒体省略>',
 	'<미디어 생략>',
 	'<Медиа пропущены>',
+	// iOS <attached: ...> markers (from WhatsApp Localizable.strings key zQ+5d)
+	'<attached:', // English
+	'<Anhang:', // German
+	'<angehängt:', // German (alt)
+	'<adjunto:', // Spanish
+	'<adjunt:', // Catalan
+	'<allegato:', // Italian
+	'<anexo:', // Portuguese (PT)
+	'<anexado:', // Portuguese (BR)
+	'<pièce jointe', // French (space before colon in some exports)
+	'<bijgevoegd:', // Dutch
+	'<bifogat:', // Swedish
+	'<vedlagt:', // Norwegian
+	'<vedhæftet:', // Danish
+	'<liite:', // Finnish
+	'<ceangailte:', // Irish
+	'<příloha:', // Czech
+	'<príloha:', // Slovak
+	'<załączono:', // Polish
+	'<csatolva:', // Hungarian
+	'<atașare:', // Romanian
+	'<priloženo:', // Croatian/Slovenian
+	'<eklendi:', // Turkish
+	'<đính kèm:', // Vietnamese
+	'<terlampir:', // Indonesian
+	'<dilampir:', // Malay
+	'<прикреплено:', // Russian
+	'<додано:', // Ukrainian
+	'<επισυνάφθηκε:', // Greek
+	'<المُرفق:', // Arabic
+	'<پیوست:', // Persian
+	'<پیوستہ:', // Urdu
+	'<מצורף:', // Hebrew
+	'<अटैच किया गया:', // Hindi
+	'<संलग्न केले:', // Marathi
+	'<જોડાયેલ:', // Gujarati
+	'<แนบ:', // Thai
+	'<附件:', // Chinese
+	'<附件：', // Chinese (fullwidth colon)
+	'<添付ファイル:', // Japanese
+	'<添付ファイル：', // Japanese (fullwidth colon)
+	'<첨부됨:', // Korean
 	'(file attached)',
 	'(arquivo anexado)',
 	'(fichier joint)',
@@ -189,23 +231,6 @@ const DATE_PATTERNS = [
 			);
 		},
 	},
-	// DD/MM/YY, HH:MM AM/PM - European/Brazilian format (12h)
-	{
-		regex:
-			/^(\d{1,2})\/(\d{1,2})\/(\d{2,4}),?\s+(\d{1,2}):(\d{2})(?::(\d{2}))?[\s\u202F\u00A0]*([AP]M)\s*-\s*/i,
-		parse: (match: RegExpMatchArray) => {
-			const [, day, month, year, hours, minutes, seconds, ampm] = match;
-			return parseDateTime(
-				parseInt(day, 10),
-				parseInt(month, 10),
-				normalizeYear(parseInt(year, 10)),
-				parseInt(hours, 10),
-				parseInt(minutes, 10),
-				seconds ? parseInt(seconds, 10) : 0,
-				ampm,
-			);
-		},
-	},
 	// DD/MM/YY, HH:MM - European/Brazilian format (24h) - No AM/PM means it's not US format
 	{
 		regex:
@@ -270,26 +295,10 @@ const DATE_PATTERNS = [
 			);
 		},
 	},
-	// DD.MM.YY HH:MM(:SS): - Dot date format with colon separator after time
-	{
-		regex:
-			/^(\d{1,2})\.(\d{1,2})\.(\d{2,4}),?\s+(\d{1,2}):(\d{2})(?::(\d{2}))?\s*:\s*/,
-		parse: (match: RegExpMatchArray) => {
-			const [, day, month, year, hours, minutes, seconds] = match;
-			return parseDateTime(
-				parseInt(day, 10),
-				parseInt(month, 10),
-				normalizeYear(parseInt(year, 10)),
-				parseInt(hours, 10),
-				parseInt(minutes, 10),
-				seconds ? parseInt(seconds, 10) : 0,
-			);
-		},
-	},
 	// YYYY/MM/DD, HH:MM AM/PM - Asian format with 12-hour time
 	{
 		regex:
-			/^(\d{4})\/(\d{1,2})\/(\d{1,2}),?\s+(\d{1,2}):(\d{2})(?::(\d{2}))?[\s\u202F\u00A0]*([AP]M)\s*-\s*/i,
+			/^(\d{4})\/(\d{1,2})\/(\d{1,2}),?\s+(\d{1,2}):(\d{2})(?::(\d{2}))?\s*([AP]M)\s*-\s*/i,
 		parse: (match: RegExpMatchArray) => {
 			const [, year, month, day, hours, minutes, seconds, ampm] = match;
 			return parseDateTime(
@@ -303,43 +312,10 @@ const DATE_PATTERNS = [
 			);
 		},
 	},
-	// YYYY/MM/DD, HH:MM - Asian format
+	// YYYY/MM/DD, HH:MM - Asian format (24-hour)
 	{
 		regex:
 			/^(\d{4})\/(\d{1,2})\/(\d{1,2}),?\s+(\d{1,2}):(\d{2})(?::(\d{2}))?\s*-\s*/,
-		parse: (match: RegExpMatchArray) => {
-			const [, year, month, day, hours, minutes, seconds] = match;
-			return parseDateTime(
-				parseInt(day, 10),
-				parseInt(month, 10),
-				parseInt(year, 10),
-				parseInt(hours, 10),
-				parseInt(minutes, 10),
-				seconds ? parseInt(seconds, 10) : 0,
-			);
-		},
-	},
-	// [YYYY/MM/DD, HH:MM:SS AM/PM] - Bracketed year-first format with 12-hour time
-	{
-		regex:
-			/^\[(\d{4})\/(\d{1,2})\/(\d{1,2}),?\s+(\d{1,2}):(\d{2})(?::(\d{2}))?[\s\u202F\u00A0]*([AP]M)\]\s*/i,
-		parse: (match: RegExpMatchArray) => {
-			const [, year, month, day, hours, minutes, seconds, ampm] = match;
-			return parseDateTime(
-				parseInt(day, 10),
-				parseInt(month, 10),
-				parseInt(year, 10),
-				parseInt(hours, 10),
-				parseInt(minutes, 10),
-				seconds ? parseInt(seconds, 10) : 0,
-				ampm,
-			);
-		},
-	},
-	// [YYYY/MM/DD, HH:MM:SS] - Bracketed year-first format (24-hour)
-	{
-		regex:
-			/^\[(\d{4})\/(\d{1,2})\/(\d{1,2}),?\s+(\d{1,2}):(\d{2})(?::(\d{2}))?\]\s*/,
 		parse: (match: RegExpMatchArray) => {
 			const [, year, month, day, hours, minutes, seconds] = match;
 			return parseDateTime(
@@ -388,98 +364,6 @@ const DATE_PATTERNS = [
 		},
 	},
 ];
-
-type DatePattern = (typeof DATE_PATTERNS)[number];
-
-const US_AMPM_PATTERN_INDEX = 0;
-const DMY_AMPM_PATTERN_INDEX = 1;
-
-function normalizeLineForParsing(line: string): string {
-	return line
-		.replace(/^[\u200E\u200F]+/, '')
-		.replace(/[\u202F\u00A0]/g, ' ')
-		.replace(/\s+klo\s+/gi, ' ')
-		.replace(
-			/(\s\d{1,2})\.(\d{2})(?:\.(\d{2}))?(?=\s*(?:-|\]|:))/g,
-			(_, h, m, s) => `${h}:${m}${s ? `:${s}` : ''}`,
-		)
-		.replace(
-			/\b([ap])\s*\.?\s*m\.?\b/gi,
-			(_, period: string) => `${period.toUpperCase()}M`,
-		);
-}
-
-function detectDatePatternOrder(lines: string[]): DatePattern[] {
-	const scores = new Array<number>(DATE_PATTERNS.length).fill(0);
-	const sampleLines = lines.slice(0, 200);
-	let dayFirstSlashAmPmEvidence = 0;
-	let monthFirstSlashAmPmEvidence = 0;
-
-	for (const line of sampleLines) {
-		if (!line.trim()) {
-			continue;
-		}
-
-		const normalizedLine = normalizeLineForParsing(line);
-
-		const slashAmPmMatch = normalizedLine.match(
-			/^(\d{1,2})\/(\d{1,2})\/(\d{2,4}),?\s+\d{1,2}:\d{2}(?::\d{2})?\s*[AP]M\s*-\s*/i,
-		);
-
-		if (slashAmPmMatch) {
-			const first = parseInt(slashAmPmMatch[1], 10);
-			const second = parseInt(slashAmPmMatch[2], 10);
-
-			if (first > 12 && second <= 12) {
-				dayFirstSlashAmPmEvidence++;
-			} else if (second > 12 && first <= 12) {
-				monthFirstSlashAmPmEvidence++;
-			}
-		}
-
-		for (let index = 0; index < DATE_PATTERNS.length; index++) {
-			const pattern = DATE_PATTERNS[index];
-			if (pattern.regex.test(normalizedLine)) {
-				scores[index]++;
-			}
-		}
-	}
-
-	let bestIndex = -1;
-	let bestScore = 0;
-	const tiedBestIndices: number[] = [];
-
-	for (let index = 0; index < scores.length; index++) {
-		if (scores[index] > bestScore) {
-			bestScore = scores[index];
-			bestIndex = index;
-			tiedBestIndices.length = 0;
-			tiedBestIndices.push(index);
-		} else if (scores[index] === bestScore && bestScore > 0) {
-			tiedBestIndices.push(index);
-		}
-	}
-
-	if (
-		tiedBestIndices.includes(US_AMPM_PATTERN_INDEX) &&
-		tiedBestIndices.includes(DMY_AMPM_PATTERN_INDEX)
-	) {
-		if (dayFirstSlashAmPmEvidence > monthFirstSlashAmPmEvidence) {
-			bestIndex = DMY_AMPM_PATTERN_INDEX;
-		} else if (monthFirstSlashAmPmEvidence > dayFirstSlashAmPmEvidence) {
-			bestIndex = US_AMPM_PATTERN_INDEX;
-		}
-	}
-
-	if (bestIndex === -1 || bestScore === 0) {
-		return DATE_PATTERNS;
-	}
-
-	return [
-		DATE_PATTERNS[bestIndex],
-		...DATE_PATTERNS.filter((_, index) => index !== bestIndex),
-	];
-}
 
 function normalizeYear(year: number): number {
 	if (year < 100) {
@@ -587,75 +471,17 @@ function isSystemMessage(content: string): boolean {
 	);
 }
 
-/**
- * Compute the position in `originalLine` that corresponds to the end of the
- * timestamp prefix whose normalized form has length `normalizedMatchLength`.
- *
- * `normalizeLineForParsing` makes five transforms; three of them change length:
- *   1. Strips leading U+200E / U+200F directional marks (shortens)
- *   2. Collapses `\s+klo\s+` → single space (shortens)
- *   3. Rewrites `a.m.`/`p.m.` variants → `AM`/`PM` (shortens)
- * The remaining two replace characters 1-for-1 (U+202F/U+00A0 → space; dot
- * time separators → colon), so they do not shift positions.
- * This function walks both strings in parallel to account for the differences.
- */
-function getOriginalRemainderOffset(
-	originalLine: string,
-	normalizedMatchLength: number,
-): number {
-	// Step 1: skip leading directional marks that normalization strips
-	const leadingMarks = originalLine.match(/^[\u200E\u200F]+/);
-	let origPos = leadingMarks ? leadingMarks[0].length : 0;
-	let normPos = 0;
-
-	while (normPos < normalizedMatchLength && origPos < originalLine.length) {
-		const remaining = originalLine.substring(origPos);
-
-		// Step 3: \s+klo\s+ → single space in normalized
-		const kloMatch = remaining.match(/^\s+klo\s+/i);
-		if (kloMatch) {
-			normPos += 1; // one space in normalized
-			origPos += kloMatch[0].length;
-			continue;
-		}
-
-		// Step 5: a.m./p.m. variants → AM/PM in normalized (2 chars)
-		const ampmMatch = remaining.match(/^([ap])\s*\.?\s*m\.?\b/i);
-		if (ampmMatch) {
-			normPos += 2;
-			origPos += ampmMatch[0].length;
-			continue;
-		}
-
-		// Steps 2 and 4 are 1-for-1 character replacements
-		normPos++;
-		origPos++;
-	}
-
-	return origPos;
-}
-
-function parseLine(
-	line: string,
-	datePatterns: DatePattern[] = DATE_PATTERNS,
-): {
+function parseLine(line: string): {
 	timestamp: Date;
 	sender: string;
 	content: string;
 	pattern: RegExp;
 } | null {
-	const normalizedLine = normalizeLineForParsing(line);
-
-	for (const { regex, parse } of datePatterns) {
-		const match = normalizedLine.match(regex);
+	for (const { regex, parse } of DATE_PATTERNS) {
+		const match = line.match(regex);
 		if (match) {
 			const timestamp = parse(match);
-
-			// Derive remainder from the original line so that sender/content
-			// preserve the exact exported text (and ID hashes stay stable).
-			// Normalization is used only for timestamp detection and parsing.
-			const splitOffset = getOriginalRemainderOffset(line, match[0].length);
-			const remainder = line.substring(splitOffset);
+			const remainder = line.substring(match[0].length);
 
 			// Try to extract sender and content
 			// Format is usually: "Sender Name: message content"
@@ -725,7 +551,6 @@ export function parseChat(
 	filename: string = 'WhatsApp Chat',
 ): ParsedChat {
 	const lines = content.split(/\r?\n/);
-	const datePatterns = detectDatePatternOrder(lines);
 	const messages: ChatMessage[] = [];
 	const participantsSet = new Set<string>();
 	const usedIds = new Set<string>(); // Track used IDs to handle collisions
@@ -750,7 +575,7 @@ export function parseChat(
 	for (const line of lines) {
 		if (!line.trim()) continue;
 
-		const parsed = parseLine(line, datePatterns);
+		const parsed = parseLine(line);
 
 		if (parsed) {
 			// This is a new message - push previous one first

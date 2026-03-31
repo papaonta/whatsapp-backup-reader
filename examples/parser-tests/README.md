@@ -40,49 +40,22 @@ This directory contains WhatsApp chat export examples in various formats for tes
   - Japanese media indicators: `<メディアなし>`, `.jpg (ファイル添付)`
   - Japanese characters in usernames and messages
 
-### 5. `asian-ampm-format-test.txt`
-- **Date Format**: `YYYY/MM/DD, HH:MM am/pm`
-- **Example**: `2024/12/01, 10:04 pm`
-- **Locale**: Year-first formats with 12-hour clock
-- **Features Tested**:
-   - Asian year-first date format with AM/PM
-   - Lowercase AM/PM (`am`, `pm`)
-   - Real-world export style from issue reports
-
-### 6. `european-ampm-format-test.txt`
-- **Date Format**: `DD/MM/YYYY, H:MM AM/PM`
-- **Example**: `23/06/2018, 1:55 p.m.`
-- **Locale**: Day-first formats with 12-hour clock
-- **Features Tested**:
-   - Day-first date with AM/PM
-   - AM/PM variants: `p.m.`, `p. m.`, uppercase/lowercase
-   - Compatibility with parser normalization of AM/PM tokens
-
-### 7. `dot-time-klo-format-test.txt`
-- **Date Format**: `DD.MM.YYYY klo HH.MM.SS` and `DD.MM.YY HH.MM.SS:`
-- **Example**: `13.6.2018 klo 21.25.15`
-- **Locale**: Finnish and dot-time variants
-- **Features Tested**:
-   - Finnish marker `klo`
-   - Time using dot separator (`HH.MM` and `HH.MM.SS`)
-   - Separator after timestamp using `:`
-
-### 8. `bracketed-year-first-test.txt`
-- **Date Format**: `[YYYY/MM/DD, HH:MM:SS]` and `[YYYY/MM/DD H:MM:SS AM/PM]`
-- **Example**: `[2018/06/13, 21:25:15]`
-- **Locale**: Year-first bracketed variants
-- **Features Tested**:
-   - Bracketed year-first format
-   - 24-hour and 12-hour variants
-   - AM/PM normalization inside brackets
-
-### 9. `dash-format-test.txt`
+### 5. `dash-format-test.txt`
 - **Date Format**: `DD-MM-YYYY, HH:MM`
 - **Example**: `10-12-2024, 14:30`
 - **Locale**: Alternative European format
 - **Features Tested**:
   - Date format with dashes instead of slashes/dots
   - Standard English media indicators
+
+### 6. `yyyy-mm-dd-format-test.txt`
+- **Date Format**: `YYYY/MM/DD, HH:MM AM/PM`
+- **Example**: `2024/12/01, 10:04 pm`
+- **Locale**: Asian format with 12-hour time
+- **Features Tested**:
+  - Year-first format with 12-hour AM/PM time
+  - Lowercase am/pm variants
+  - Tests for issue #69
 
 ## Supported Date Formats
 
@@ -108,38 +81,25 @@ The parser supports the following date patterns:
    - Example: `10-12-24, 14:30`
    - Alternative European format
 
-6. **Asian Format**: `YYYY/MM/DD, HH:MM`
+6. **Asian Format (24h)**: `YYYY/MM/DD, HH:MM`
    - Example: `2024/12/10, 14:30`
    - Year-first format (Japan, China, Korea)
 
 7. **Asian Format (12h)**: `YYYY/MM/DD, HH:MM AM/PM`
-   - Example: `2024/12/01, 10:04 pm`
-   - Year-first format with 12-hour clock
-   - Supports uppercase and lowercase AM/PM
+   - Example: `2024/12/10, 2:30 PM`
+   - Year-first format with 12-hour time
+   - Resolves issue #69
 
-8. **European/Brazilian Format (12h)**: `DD/MM/YY, H:MM AM/PM`
-   - Example: `23/06/2018, 1:55 p.m.`
-   - Day-first format with 12-hour clock
-   - Supports `AM`, `PM`, `a.m.`, `p.m.`, and `p. m.` variants
-
-9. **Bracketed Format**: `[DD/MM/YY, HH:MM:SS]`
+8. **Bracketed Format**: `[DD/MM/YY, HH:MM:SS]`
    - Example: `[10/12/24, 14:30:45]`
    - Some older WhatsApp versions
 
-10. **iOS Bracketed Format (12h)**: `[DD/MM/YYYY, HH:MM:SS AM/PM]`
+8. **iOS Bracketed Format (12h)**: `[DD/MM/YYYY, HH:MM:SS AM/PM]`
    - Example: `[13/11/2025, 12:25:55 PM]`
    - iOS WhatsApp exports
    - Uses 12-hour format with AM/PM
    - May contain Unicode whitespace (U+202F) before AM/PM
    - File typically named `_chat.txt` (with underscore prefix)
-
-11. **Bracketed Year-First Format**: `[YYYY/MM/DD, HH:MM:SS]`
-   - Example: `[2018/06/13, 21:25:15]`
-   - Supports both 24-hour and AM/PM variants
-
-12. **Dot-Time + Finnish `klo`**: `DD.MM.YYYY klo HH.MM.SS`
-   - Example: `13.6.2018 klo 21.25.15`
-   - Dot-separated time normalized for parsing
 
 ## Test Files
 
@@ -147,12 +107,8 @@ The parser supports the following date patterns:
 ### 2. `spanish-format-test.txt` (see above)
 ### 3. `french-format-test.txt` (see above)
 ### 4. `asian-format-test.txt` (see above)
-### 5. `asian-ampm-format-test.txt` (see above)
-### 6. `european-ampm-format-test.txt` (see above)
-### 7. `dot-time-klo-format-test.txt` (see above)
-### 8. `bracketed-year-first-test.txt` (see above)
-### 9. `dash-format-test.txt` (see above)
-### 10. `ios-format-test.txt`
+### 5. `dash-format-test.txt` (see above)
+### 6. `ios-format-test.txt`
 - **Date Format**: `[DD/MM/YYYY, HH:MM:SS AM/PM]`
 - **Example**: `[13/11/2025, 12:25:55 PM]`
 - **Locale**: iOS (all locales)
@@ -166,16 +122,18 @@ The parser supports the following date patterns:
 
 The parser recognizes media indicators in multiple languages:
 
-- **English**: `<Media omitted>`, `(file attached)`
-- **Portuguese**: `<Mídia oculta>`, `(arquivo anexado)`
-- **French**: `<Médias omis>`, `(fichier joint)`
-- **German**: `<Medien ausgelassen>`, `(Datei angehängt)`
-- **Spanish**: `<Archivo omitido>`, `(archivo adjunto)`
-- **Italian**: `<Media eliminati>`, `(file allegato)`
-- **Dutch**: `<Medien weggelaten>`, `(bestand bijgevoegd)`
-- **Japanese**: `<メディアなし>`, `(ファイル添付)`
-- **Chinese**: `<媒体省略>`, `(附件)`
-- **Russian**: `<Медиа пропущены>`, `(файл прикреплен)`
+- **English**: `<Media omitted>`, `(file attached)`, iOS: `<attached:`
+- **Portuguese**: `<Mídia oculta>`, `(arquivo anexado)`, iOS: `<anexo:`, `<anexado:`
+- **French**: `<Médias omis>`, `(fichier joint)`, iOS: `<pièce jointe`
+- **German**: `<Medien ausgelassen>`, `(Datei angehängt)`, iOS: `<Anhang:`, `<angehängt:`
+- **Spanish**: `<Archivo omitido>`, `(archivo adjunto)`, iOS: `<adjunto:`
+- **Italian**: `<Media eliminati>`, `(file allegato)`, iOS: `<allegato:`
+- **Dutch**: `<Medien weggelaten>`, `(bestand bijgevoegd)`, iOS: `<bijgevoegd:`
+- **Japanese**: `<メディアなし>`, `(ファイル添付)`, iOS: `<添付ファイル:`
+- **Chinese**: `<媒体省略>`, `(附件)`, iOS: `<附件:`
+- **Korean**: `<미디어 생략>`, iOS: `<첨부됨:`
+- **Russian**: `<Медиа пропущены>`, `(файл прикреплен)`, iOS: `<прикреплено:`
+- **Plus 20+ additional iOS languages**: Catalan, Swedish, Norwegian, Danish, Finnish, Irish, Czech, Slovak, Polish, Hungarian, Romanian, Croatian, Turkish, Vietnamese, Indonesian, Malay, Ukrainian, Greek, Arabic, Persian, Urdu, Hebrew, Hindi, Marathi, Gujarati, Thai
 
 ## System Message Indicators
 
