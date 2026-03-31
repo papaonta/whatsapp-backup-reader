@@ -1,3 +1,10 @@
+## [1.29.4](https://github.com/rodrigogs/whats-reader/compare/v1.29.3...v1.29.4) (2026-03-31)
+
+
+### Bug Fixes
+
+* **parser:** support iOS <attached: media markers in all languages ([50f24f3](https://github.com/rodrigogs/whats-reader/commit/50f24f3c9e286a3306bb7db05b8cd9ef59c209c6))
+
 ## [1.29.3](https://github.com/rodrigogs/whats-reader/compare/v1.29.2...v1.29.3) (2026-03-03)
 
 
