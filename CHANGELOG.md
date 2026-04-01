@@ -1,3 +1,10 @@
+## [1.30.1](https://github.com/rodrigogs/whats-reader/compare/v1.30.0...v1.30.1) (2026-04-01)
+
+
+### Bug Fixes
+
+* pin electron-builder to ~26.0.12 ([95cb0b7](https://github.com/rodrigogs/whats-reader/commit/95cb0b71ef8aa7443b1300f6a3ad52e366f1b04b))
+
 # [1.30.0](https://github.com/rodrigogs/whats-reader/compare/v1.29.4...v1.30.0) (2026-04-01)
 
 
