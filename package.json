@@ -1,7 +1,7 @@
 {
 	"name": "whats-reader",
 	"productName": "WhatsApp Backup Reader",
-	"version": "1.29.4",
+	"version": "1.30.1",
 	"description": "A desktop app to read and visualize WhatsApp chat exports",
 	"license": "AGPL-3.0",
 	"author": {
@@ -38,9 +38,9 @@
 		"machine-translate": "inlang machine translate --project project.inlang"
 	},
 	"dependencies": {
-		"@floating-ui/dom": "^1.7.4",
+		"@floating-ui/dom": "^1.7.6",
 		"@huggingface/transformers": "^3.8.1",
-		"electron-updater": "^6.6.2",
+		"electron-updater": "^6.8.3",
 		"idb-keyval": "^6.2.2",
 		"jszip": "^3.10.1"
 	},
@@ -48,28 +48,28 @@
 		"cookie": "^0.7.0"
 	},
 	"devDependencies": {
-		"@biomejs/biome": "2.3.8",
-		"@inlang/cli": "^3.0.12",
-		"@inlang/paraglide-js": "2.6.0",
-		"@inlang/plugin-m-function-matcher": "^2.1.0",
-		"@inlang/plugin-message-format": "^4.0.0",
+		"@biomejs/biome": "2.4.10",
+		"@inlang/cli": "^3.1.9",
+		"@inlang/paraglide-js": "2.15.1",
+		"@inlang/plugin-m-function-matcher": "^2.2.4",
+		"@inlang/plugin-message-format": "^4.4.0",
 		"@semantic-release/changelog": "^6.0.3",
 		"@semantic-release/git": "^10.0.1",
 		"@sveltejs/adapter-static": "^3.0.10",
-		"@sveltejs/kit": "^2.49.1",
-		"@sveltejs/vite-plugin-svelte": "^6.2.1",
-		"@tailwindcss/vite": "^4.1.17",
+		"@sveltejs/kit": "^2.55.0",
+		"@sveltejs/vite-plugin-svelte": "^6.2.4",
+		"@tailwindcss/vite": "^4.2.2",
 		"concurrently": "^9.2.1",
 		"cross-env": "^10.1.0",
-		"electron": "^39.2.6",
-		"electron-builder": "^26.0.12",
-		"semantic-release": "^25.0.2",
-		"svelte": "^5.45.6",
-		"svelte-check": "^4.3.4",
-		"tailwindcss": "^4.1.17",
+		"electron": "^39.8.6",
+		"electron-builder": "~26.0.12",
+		"semantic-release": "^25.0.3",
+		"svelte": "^5.55.1",
+		"svelte-check": "^4.4.6",
+		"tailwindcss": "^4.2.2",
 		"typescript": "^5.9.3",
-		"vite": "^7.2.7",
-		"wait-on": "^9.0.3"
+		"vite": "^7.3.1",
+		"wait-on": "^9.0.4"
 	},
 	"build": {
 		"appId": "com.whatsapp.backup-reader",
