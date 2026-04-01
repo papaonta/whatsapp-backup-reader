@@ -1,9 +1,9 @@
 <script lang="ts">
 import { tick } from 'svelte';
 import { browser } from '$app/environment';
-import { floating } from '$lib/actions/floating';
 import favicon from '$lib/assets/favicon.svg';
 import { getAutoUpdaterState, initAutoUpdater } from '$lib/auto-updater.svelte';
+import { bookmarksState } from '$lib/bookmarks.svelte';
 import {
 	ChatList,
 	ChatStats,
@@ -28,6 +28,15 @@ import MediaGallery from '$lib/components/MediaGallery.svelte';
 import Modal from '$lib/components/Modal.svelte';
 import ModalContent from '$lib/components/ModalContent.svelte';
 import ModalHeader from '$lib/components/ModalHeader.svelte';
+import ReselectFileModal from '$lib/components/ReselectFileModal.svelte';
+import RestoreSessionModal from '$lib/components/RestoreSessionModal.svelte';
+import Toast from '$lib/components/Toast.svelte';
+import {
+	getElectronFilePath,
+	openElectronFile,
+	openZipFilePicker,
+} from '$lib/helpers/file-picker';
+import { sanitizeFilename } from '$lib/helpers/format';
 import {
 	isElectronMac as checkIsElectronMac,
 	isElectronApp,
@@ -35,8 +44,25 @@ import {
 } from '$lib/helpers/responsive';
 import * as m from '$lib/paraglide/messages';
 import { parseZipFile, readFileAsArrayBuffer } from '$lib/parser';
-import { appState, type ChatData } from '$lib/state.svelte';
-import { setTranscriptionLanguage } from '$lib/transcription.svelte';
+import {
+	findPersistedChatByTitle,
+	getDontShowRestoreModal,
+	getPersistedChats,
+	isElectronPathReference,
+	type PersistedChatMetadata,
+	removePersistedChat,
+	restoreChat,
+	savePersistedChat,
+	storeFileHandle,
+	updatePersistedChat,
+	validateRestoredFile,
+} from '$lib/persistence.svelte';
+import { appState, type ChatData, type LoadingChat } from '$lib/state.svelte';
+import {
+	getTranscriptionsForChat,
+	setTranscriptionLanguage,
+	setTranscriptionsForChat,
+} from '$lib/transcription.svelte';
 
 // Detect if running in Electron
 const isElectron = isElectronApp();
@@ -74,11 +100,28 @@ $effect(() => {
 
 let showStats = $state(false);
 let showSidebar = $state(true);
+let sidebarFileInput: HTMLInputElement | undefined = $state();
 let showBookmarks = $state(false);
 let showMediaGallery = $state(false);
 let showParticipants = $state(false);
 let participantStats = $state<Map<string, number> | null>(null);
 let scrollToMessageId = $state<string | null>(null);
+
+// Toast notification state
+let toastMessage = $state<string | null>(null);
+let toastType = $state<'success' | 'error' | 'info'>('success');
+
+function showToast(
+	message: string,
+	type: 'success' | 'error' | 'info' = 'success',
+) {
+	toastMessage = message;
+	toastType = type;
+}
+
+function hideToast() {
+	toastMessage = null;
+}
 
 // Compute participant stats when modal opens (not during render)
 function openParticipantsModal() {
@@ -105,12 +148,6 @@ let showChatOptionsDropdown = $state(false);
 let chatOptionsButtonRef = $state<HTMLButtonElement | null>(null);
 
 // Loading chats state - shows placeholder items while importing
-interface LoadingChat {
-	id: string;
-	filename: string;
-	progress: number;
-	stage: 'reading' | 'extracting' | 'parsing';
-}
 let loadingChats = $state<LoadingChat[]>([]);
 
 // Derived loading state for FileDropZone (empty state)
@@ -140,15 +177,161 @@ let languageByChat = $state<Map<string, string>>(new Map());
 // Store auto-load media preference per chat (chatTitle -> enabled)
 let autoLoadMediaByChat = $state<Map<string, boolean>>(new Map());
 
+// Persistence state
+let rememberedChats = $state<Set<string>>(new Set());
+
+function addRemembered(chatTitle: string) {
+	rememberedChats.add(chatTitle);
+	rememberedChats = new Set(rememberedChats);
+}
+
+function removeRemembered(chatTitle: string) {
+	rememberedChats.delete(chatTitle);
+	rememberedChats = new Set(rememberedChats);
+}
+let showRestoreSessionModal = $state(false);
+let showReselectFileModal = $state(false);
+let reselectChatMetadata = $state<PersistedChatMetadata | null>(null);
+let reselectResolve:
+	| ((
+			result: {
+				file: File;
+				path?: string;
+				handle?: FileSystemFileHandle;
+			} | null,
+	  ) => void)
+	| null = null;
+let persistedChatsToRestore = $state<PersistedChatMetadata[]>([]);
+
+// Track file references for persistence (chatTitle -> {file, filePath, fileHandle, persistedId})
+// Note: mutated via .set()/.delete() without reassignment — read imperatively, not in reactive contexts
+let chatFileReferences = $state<
+	Map<
+		string,
+		{
+			file: File | null;
+			filePath?: string;
+			fileHandle?: FileSystemFileHandle;
+			persistedId?: string;
+		}
+	>
+>(new Map());
+
 // Get auto-load media setting for the current chat
 const autoLoadMediaForCurrentChat = $derived.by(() => {
 	if (!appState.selectedChat) return false;
 	return autoLoadMediaByChat.get(appState.selectedChat.title) || false;
 });
 
-async function handleFilesSelected(files: FileList) {
+const STAGE_PROGRESS = {
+	reading: { offset: 0.0, weight: 0.1 },
+	extracting: { offset: 0.1, weight: 0.5 },
+	parsing: { offset: 0.6, weight: 0.4 },
+} as const;
+
+function startIndexWorker(chatData: ChatData) {
+	const indexWorker = new Worker(
+		new URL('$lib/workers/index-worker.ts', import.meta.url),
+		{ type: 'module' },
+	);
+
+	indexWorker.onmessage = (
+		event: MessageEvent<{
+			chatTitle: string;
+			indexEntries: [string, number][];
+			flatItems: Array<
+				| { type: 'date'; dateKey: string }
+				| { type: 'message'; messageId: string }
+			>;
+			serializedMessages: Array<{
+				id: string;
+				timestamp: string;
+				sender: string;
+				content: string;
+				isSystemMessage: boolean;
+				isMediaMessage: boolean;
+				mediaType?: string;
+				rawLine: string;
+			}>;
+		}>,
+	) => {
+		const { chatTitle, indexEntries, flatItems, serializedMessages } =
+			event.data;
+		const messageIndex = new Map(indexEntries);
+		appState.updateChatMessageIndex(chatTitle, messageIndex);
+		appState.updateChatFlatItems(chatTitle, flatItems);
+		appState.updateChatSerializedMessages(chatTitle, serializedMessages);
+		indexWorker.terminate();
+	};
+
+	indexWorker.onerror = (err) => {
+		console.error('Index worker error:', err);
+		indexWorker.terminate();
+	};
+
+	indexWorker.postMessage({
+		messages: chatData.messages.map((m) => ({
+			id: m.id,
+			timestamp: m.timestamp.toISOString(),
+			sender: m.sender,
+			content: m.content,
+			isSystemMessage: m.isSystemMessage,
+			isMediaMessage: m.isMediaMessage,
+			mediaType: m.mediaType,
+			rawLine: m.rawLine,
+		})),
+		chatTitle: chatData.title,
+	});
+}
+
+function makeProgressCallback(loadingId: string) {
+	return async ({
+		stage,
+		progress,
+	}: {
+		stage: LoadingChat['stage'];
+		progress: number;
+	}) => {
+		const { offset: stageOffset, weight: stageWeight } =
+			STAGE_PROGRESS[stage] ?? STAGE_PROGRESS.extracting;
+		const overallProgress =
+			10 + (stageOffset + (progress / 100) * stageWeight) * 90;
+		loadingChats = loadingChats.map((lc) =>
+			lc.id === loadingId ? { ...lc, progress: overallProgress, stage } : lc,
+		);
+	};
+}
+
+async function handleSidebarImport() {
+	if (window.electronAPI) {
+		const result = await openElectronFile();
+		if (result) {
+			const dt = new DataTransfer();
+			dt.items.add(result.file);
+			handleFilesSelected(
+				dt.files,
+				undefined,
+				result.path ? [result.path] : undefined,
+			);
+		}
+	} else {
+		const result = await openZipFilePicker(true);
+		if (result) {
+			handleFilesSelected(result.files, result.handles);
+		} else if (!('showOpenFilePicker' in window)) {
+			sidebarFileInput?.click();
+		}
+	}
+}
+
+async function handleFilesSelected(
+	files: FileList,
+	handles?: FileSystemFileHandle[],
+	paths?: string[],
+) {
 	appState.clearError();
 
+	let handleIndex = 0;
 	for (const file of files) {
 		if (!file.name.endsWith('.zip')) {
 			appState.setError(m.error_unsupported_file({ filename: file.name }));
@@ -157,9 +340,7 @@ async function handleFilesSelected(files: FileList) {
 
 		// Create a loading placeholder for this file
 		const loadingId = crypto.randomUUID();
-		const filename = file.name
-			.replace(/\.zip$/i, '')
-			.replace(/^WhatsApp Chat (with |com )/i, '');
+		const filename = sanitizeFilename(file.name);
 
 		loadingChats = [
 			...loadingChats,
@@ -170,6 +351,13 @@ async function handleFilesSelected(files: FileList) {
 				stage: 'reading',
 			},
 		];
+
+		// Capture values before async IIFE to avoid closure-over-loop-variable bug
+		const currentHandleIndex = handleIndex;
+		// File path: prefer explicit path from Electron dialog, fall back to file.path from drag-drop
+		const droppedFilePath =
+			paths?.[currentHandleIndex] || getElectronFilePath(file);
+		const droppedHandle = handles?.[currentHandleIndex];
 
 		// Process file asynchronously
 		(async () => {
@@ -190,87 +378,22 @@ async function handleFilesSelected(files: FileList) {
 				// Parse ZIP file using Web Worker
 				const chatData: ChatData = await parseZipFile(
 					buffer,
-					async ({ stage, progress }) => {
-						const STAGE_PROGRESS = {
-							reading: { offset: 0.0, weight: 0.1 },
-							extracting: { offset: 0.1, weight: 0.5 },
-							parsing: { offset: 0.6, weight: 0.4 },
-						} as const;
-
-						const { offset: stageOffset, weight: stageWeight } =
-							STAGE_PROGRESS[stage] ?? STAGE_PROGRESS.extracting;
-
-						const overallProgress =
-							10 + (stageOffset + (progress / 100) * stageWeight) * 90;
-
-						loadingChats = loadingChats.map((lc) =>
-							lc.id === loadingId
-								? { ...lc, progress: overallProgress, stage }
-								: lc,
-						);
-					},
+					makeProgressCallback(loadingId),
 				);
 
 				// Remove loading placeholder and add actual chat
 				loadingChats = loadingChats.filter((lc) => lc.id !== loadingId);
 				appState.addChat(chatData);
 
-				// Start background indexing for bookmark navigation and flat items
-				const indexWorker = new Worker(
-					new URL('$lib/workers/index-worker.ts', import.meta.url),
-					{ type: 'module' },
-				);
-
-				indexWorker.onmessage = (
-					event: MessageEvent<{
-						chatTitle: string;
-						indexEntries: [string, number][];
-						flatItems: Array<
-							| { type: 'date'; dateKey: string }
-							| { type: 'message'; messageId: string }
-						>;
-						serializedMessages: Array<{
-							id: string;
-							timestamp: string;
-							sender: string;
-							content: string;
-							isSystemMessage: boolean;
-							isMediaMessage: boolean;
-							mediaType?: string;
-							rawLine: string;
-						}>;
-					}>,
-				) => {
-					const { chatTitle, indexEntries, flatItems, serializedMessages } =
-						event.data;
-					const messageIndex = new Map(indexEntries);
-					appState.updateChatMessageIndex(chatTitle, messageIndex);
-					appState.updateChatFlatItems(chatTitle, flatItems);
-					appState.updateChatSerializedMessages(chatTitle, serializedMessages);
-					indexWorker.terminate();
-				};
-
-				indexWorker.onerror = (err) => {
-					console.error('Index worker error:', err);
-					indexWorker.terminate();
-				};
-
-				// Send messages to worker for indexing
-				const serializedMessages = chatData.messages.map((m) => ({
-					id: m.id,
-					timestamp: m.timestamp.toISOString(),
-					sender: m.sender,
-					content: m.content,
-					isSystemMessage: m.isSystemMessage,
-					isMediaMessage: m.isMediaMessage,
-					mediaType: m.mediaType,
-					rawLine: m.rawLine,
-				}));
-
-				indexWorker.postMessage({
-					messages: serializedMessages,
-					chatTitle: chatData.title,
+				// Store file reference for persistence
+				chatFileReferences.set(chatData.title, {
+					file,
+					filePath: droppedFilePath,
+					fileHandle: droppedHandle,
 				});
+
+				// Start background indexing
+				startIndexWorker(chatData);
 
 				// On mobile, collapse sidebar after loading chats
 				if (browser && isMobileViewport()) {
@@ -281,10 +404,11 @@ async function handleFilesSelected(files: FileList) {
 				// Remove loading placeholder on error
 				loadingChats = loadingChats.filter((lc) => lc.id !== loadingId);
 				appState.setError(
-					error instanceof Error ? error.message : 'Failed to parse file',
+					error instanceof Error ? error.message : m.error_parse_failed(),
 				);
 			}
 		})();
+		handleIndex++;
 	}
 }
 
@@ -303,7 +427,17 @@ function handleSelectChat(index: number) {
 }
 
 function handleRemoveChat(index: number) {
+	const chat = appState.chats[index];
+	const chatTitle = chat?.title;
+
+	// Remove from current session only — persisted data stays in IndexedDB
+	// so the chat can be restored on next app launch.
+	// To remove from saved chats, user must toggle "Remember Conversation" off.
 	appState.removeChat(index);
+
+	if (chatTitle) {
+		chatFileReferences.delete(chatTitle);
+	}
 }
 
 function handleLanguageChange(chatTitle: string, language: string) {
@@ -421,6 +555,329 @@ const currentUser = $derived.by(() => {
 	// Otherwise, no perspective (all messages on left)
 	return undefined;
 });
+
+// Check for persisted chats on app load (one-time)
+let persistenceChecked = false;
+$effect(() => {
+	if (!browser || persistenceChecked) return;
+	persistenceChecked = true;
+
+	(async () => {
+		try {
+			const persisted = await getPersistedChats();
+			if (persisted.length === 0) return;
+
+			// Seed rememberedChats from IndexedDB so toggle state is correct
+			// even if user skips the restore modal or clicks "Start Fresh"
+			for (const chat of persisted) {
+				rememberedChats.add(chat.chatTitle);
+			}
+			rememberedChats = new Set(rememberedChats);
+
+			// Check if user wants to skip the modal
+			const dontShow = await getDontShowRestoreModal();
+			if (dontShow) return;
+
+			// Show restore modal
+			persistedChatsToRestore = persisted;
+			showRestoreSessionModal = true;
+		} catch (e) {
+			console.error('Failed to check for persisted chats:', e);
+		}
+	})();
+});
+
+// Handle restoring selected chats
+async function handleRestoreChats(chatIds: string[]) {
+	showRestoreSessionModal = false;
+
+	for (const chatId of chatIds) {
+		const persistedChat = persistedChatsToRestore.find((c) => c.id === chatId);
+		if (!persistedChat) continue;
+
+		try {
+			const result = await restoreChat(persistedChat);
+
+			if (result.needsReselect) {
+				// Show reselect modal and wait for user response
+				reselectChatMetadata = persistedChat;
+				showReselectFileModal = true;
+				const reselected = await new Promise<{
+					file: File;
+					path?: string;
+					handle?: FileSystemFileHandle;
+				} | null>((resolve) => {
+					reselectResolve = resolve;
+				});
+				reselectChatMetadata = null;
+				showReselectFileModal = false;
+
+				if (reselected) {
+					const reselectedBuffer = await reselected.file.arrayBuffer();
+					const { validationPassed } = await loadChatFromBuffer(
+						reselectedBuffer,
+						reselected.file.name,
+						persistedChat,
+					);
+
+					// Only upgrade persisted entry and mark remembered when validation passes
+					// to avoid binding saved metadata to the wrong file
+					if (validationPassed) {
+						const reselectedPath =
+							reselected.path || getElectronFilePath(reselected.file);
+						chatFileReferences.set(persistedChat.chatTitle, {
+							file: reselected.file,
+							filePath: reselectedPath,
+							fileHandle: reselected.handle,
+							persistedId: persistedChat.id,
+						});
+
+						// Upgrade persisted entry so future restores work automatically
+						if (reselectedPath) {
+							await updatePersistedChat(persistedChat.id, {
+								fileReference: {
+									type: 'electron-path',
+									filePath: reselectedPath,
+								},
+							});
+						} else if (reselected.handle) {
+							// Chrome/Edge: store handle and upgrade entry
+							await storeFileHandle(persistedChat.id, reselected.handle);
+							await updatePersistedChat(persistedChat.id, {
+								fileReference: {
+									type: 'file-handle',
+									handleId: persistedChat.id,
+								},
+							});
+						}
+						addRemembered(persistedChat.chatTitle);
+					}
+				}
+				continue;
+			}
+
+			if (!result.success || !result.data) {
+				console.error(
+					`Failed to restore chat ${persistedChat.chatTitle}:`,
+					result.error,
+				);
+				showToast(m.persistence_restore_failed(), 'error');
+				continue;
+			}
+
+			// Parse and load the chat
+			await loadChatFromBuffer(
+				result.data.buffer,
+				result.data.name,
+				persistedChat,
+				isElectronPathReference(result.data.metadata.fileReference)
+					? result.data.metadata.fileReference.filePath
+					: undefined,
+			);
+
+			// Store file reference for subsequent toggle operations
+			chatFileReferences.set(persistedChat.chatTitle, {
+				file: null,
+				filePath: isElectronPathReference(result.data.metadata.fileReference)
+					? result.data.metadata.fileReference.filePath
+					: undefined,
+				persistedId: persistedChat.id,
+			});
+
+			addRemembered(persistedChat.chatTitle);
+		} catch (e) {
+			console.error(`Error restoring chat ${persistedChat.chatTitle}:`, e);
+			showToast(m.persistence_restore_failed(), 'error');
+		}
+	}
+}
+
+// Handle reselect file for a persisted chat
+async function handleReselectFile(
+	file: File,
+	filePath?: string,
+	fileHandle?: FileSystemFileHandle,
+) {
+	if (reselectResolve) {
+		reselectResolve({ file, path: filePath, handle: fileHandle });
+		reselectResolve = null;
+	}
+}
+
+// Skip reselect for a chat
+function handleSkipReselect() {
+	if (reselectResolve) {
+		reselectResolve(null);
+		reselectResolve = null;
+	}
+}
+
+// Handle start fresh (close restore modal without restoring)
+function handleStartFresh() {
+	showRestoreSessionModal = false;
+	persistedChatsToRestore = [];
+}
+
+// Load chat from buffer with optional restoration metadata
+async function loadChatFromBuffer(
+	buffer: ArrayBuffer,
+	fileName: string,
+	restoredMetadata?: PersistedChatMetadata,
+	filePath?: string,
+): Promise<{ validationPassed: boolean }> {
+	// Create a loading placeholder
+	const loadingId = crypto.randomUUID();
+	const displayName = sanitizeFilename(fileName);
+
+	loadingChats = [
+		...loadingChats,
+		{
+			id: loadingId,
+			filename: displayName,
+			progress: 0,
+			stage: 'extracting',
+		},
+	];
+
+	try {
+		// Parse ZIP file using Web Worker
+		const chatData: ChatData = await parseZipFile(
+			buffer,
+			makeProgressCallback(loadingId),
+		);
+
+		// If restoring, validate the file and only apply metadata if valid
+		let validationPassed = true;
+		if (restoredMetadata) {
+			const validation = validateRestoredFile(chatData, restoredMetadata);
+			if (!validation.valid) {
+				console.warn('Restored file validation failed:', validation.reasons);
+				validationPassed = false;
+			} else {
+				// Restore bookmarks
+				if (restoredMetadata.bookmarks.length > 0) {
+					bookmarksState.importBookmarks({
+						version: 1,
+						exportedAt: restoredMetadata.savedAt,
+						bookmarks: restoredMetadata.bookmarks,
+					});
+				}
+
+				// Restore transcriptions
+				if (Object.keys(restoredMetadata.transcriptions).length > 0) {
+					setTranscriptionsForChat(restoredMetadata.transcriptions);
+				}
+
+				// Restore settings
+				if (restoredMetadata.settings.language) {
+					languageByChat.set(
+						chatData.title,
+						restoredMetadata.settings.language,
+					);
+					languageByChat = new Map(languageByChat);
+				}
+				if (restoredMetadata.settings.autoLoadMedia !== undefined) {
+					autoLoadMediaByChat.set(
+						chatData.title,
+						restoredMetadata.settings.autoLoadMedia,
+					);
+					autoLoadMediaByChat = new Map(autoLoadMediaByChat);
+				}
+				if (restoredMetadata.settings.perspective !== undefined) {
+					perspectiveByChat.set(
+						chatData.title,
+						restoredMetadata.settings.perspective,
+					);
+					perspectiveByChat = new Map(perspectiveByChat);
+				}
+			}
+		}
+
+		// Remove loading placeholder and add actual chat
+		loadingChats = loadingChats.filter((lc) => lc.id !== loadingId);
+		appState.addChat(chatData);
+
+		// Store file reference for persistence
+		if (filePath) {
+			chatFileReferences.set(chatData.title, { file: null, filePath });
+		}
+
+		// Start background indexing
+		startIndexWorker(chatData);
+
+		return { validationPassed };
+	} catch (error) {
+		console.error('Error parsing file:', error);
+		// Remove loading placeholder on error
+		loadingChats = loadingChats.filter((lc) => lc.id !== loadingId);
+		throw error;
+	}
+}
+
+async function rememberChat(chatTitle: string) {
+	const chat = appState.chats.find((c) => c.title === chatTitle);
+	if (!chat) return;
+
+	try {
+		const fileRef = chatFileReferences.get(chatTitle);
+		// Use handle captured during drag-drop (no file picker needed)
+		const fileHandle = fileRef?.fileHandle;
+
+		const bookmarks = bookmarksState.getBookmarksForChat(chatTitle);
+		const chatMessageIds = chat.messages.map((msg) => msg.id);
+		const transcriptions = getTranscriptionsForChat(chatMessageIds);
+
+		const persistedId = await savePersistedChat(
+			chat,
+			fileRef?.file || null,
+			bookmarks,
+			transcriptions,
+			{
+				language: languageByChat.get(chatTitle) || 'portuguese',
+				autoLoadMedia: autoLoadMediaByChat.get(chatTitle) || false,
+				perspective: perspectiveByChat.get(chatTitle) || null,
+			},
+			fileRef?.filePath,
+			fileHandle,
+		);
+
+		if (fileRef) {
+			chatFileReferences.set(chatTitle, {
+				...fileRef,
+				fileHandle,
+				persistedId,
+			});
+		}
+
+		addRemembered(chatTitle);
+		showToast(m.persistence_conversation_saved(), 'success');
+	} catch (e) {
+		console.error('Failed to save conversation:', e);
+		showToast(m.persistence_save_failed(), 'error');
+	}
+}
+
+async function forgetChat(chatTitle: string) {
+	try {
+		const persistedChat = await findPersistedChatByTitle(chatTitle);
+		if (persistedChat) {
+			await removePersistedChat(persistedChat.id);
+		}
+		removeRemembered(chatTitle);
+		showToast(m.persistence_conversation_removed(), 'success');
+	} catch (e) {
+		console.error('Failed to remove conversation:', e);
+		showToast(m.persistence_remove_failed(), 'error');
+	}
+}
+
+function handleToggleRemember(chatTitle: string, enabled: boolean) {
+	if (enabled) {
+		rememberChat(chatTitle);
+	} else {
+		forgetChat(chatTitle);
+	}
+}
 </script>
 
 <div class="h-screen flex flex-col bg-gray-100 dark:bg-gray-950">
@@ -788,22 +1245,27 @@ const currentUser = $derived.by(() => {
 				
 				<!-- Chats title bar - matches search bar styling exactly -->
 				<div class="p-3 bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
-					<label class="relative flex items-center w-full h-10 pl-10 pr-4 bg-gray-100 dark:bg-gray-800 rounded-lg cursor-pointer hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors">
+					<button
+						type="button"
+						class="relative flex items-center w-full h-10 pl-10 pr-4 bg-gray-100 dark:bg-gray-800 rounded-lg cursor-pointer hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+						onclick={handleSidebarImport}
+					>
 						<div class="absolute inset-y-0 left-3 flex items-center pointer-events-none">
 							<Icon name="plus" size="md" class="text-gray-400" />
 						</div>
 						<span class="text-gray-500">{m.import_chat()}</span>
-						<input
-							type="file"
-							accept=".txt,.zip"
-							class="hidden"
-							onchange={(e) => {
-								const input = e.target as HTMLInputElement;
-								if (input.files) handleFilesSelected(input.files);
-							}}
-							multiple
-						/>
-					</label>
+					</button>
+					<input
+						bind:this={sidebarFileInput}
+						type="file"
+						accept=".zip"
+						class="hidden"
+						onchange={(e) => {
+							const input = e.target as HTMLInputElement;
+							if (input.files) handleFilesSelected(input.files);
+						}}
+						multiple
+					/>
 				</div>
 
 				<!-- Chat list -->
@@ -818,6 +1280,8 @@ const currentUser = $derived.by(() => {
 						{autoLoadMediaByChat}
 						onAutoLoadMediaChange={handleAutoLoadMediaChange}
 						{loadingChats}
+						{rememberedChats}
+						onToggleRemember={handleToggleRemember}
 					/>
 				</div>
 			</div>
@@ -1024,4 +1488,28 @@ const currentUser = $derived.by(() => {
 <!-- Auto-update toast notification (Electron only) -->
 {#if isElectron && autoUpdaterState.isElectron}
 	<AutoUpdateToast />
+{/if}
+<!-- Restore Session Modal -->
+{#if showRestoreSessionModal}
+<RestoreSessionModal
+persistedChats={persistedChatsToRestore}
+onRestore={handleRestoreChats}
+onStartFresh={handleStartFresh}
+onClose={handleStartFresh}
+/>
+{/if}
+
+<!-- Reselect File Modal -->
+{#if showReselectFileModal && reselectChatMetadata}
+<ReselectFileModal
+chatMetadata={reselectChatMetadata}
+onFileSelected={handleReselectFile}
+onSkip={handleSkipReselect}
+onClose={handleSkipReselect}
+/>
+{/if}
+
+<!-- Toast Notification -->
+{#if toastMessage}
+<Toast message={toastMessage} type={toastType} onClose={hideToast} />
 {/if}
