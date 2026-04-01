@@ -1,3 +1,16 @@
+# [1.30.0](https://github.com/rodrigogs/whats-reader/compare/v1.29.4...v1.30.0) (2026-04-01)
+
+
+### Bug Fixes
+
+* preserve original line content in parseLine for sender/content ([ec7c3da](https://github.com/rodrigogs/whats-reader/commit/ec7c3daf1640735678a47fff490eb7303afa5eb0))
+
+
+### Features
+
+* add persistent conversation feature with cross-platform file restoration ([#66](https://github.com/rodrigogs/whats-reader/issues/66)) ([432bdb4](https://github.com/rodrigogs/whats-reader/commit/432bdb44f04ad9e3850430bc97ed47026385456a))
+* improve date format detection and resilience ([d8f9ddc](https://github.com/rodrigogs/whats-reader/commit/d8f9ddc4d51c33be258cc6652bbd6637b556f6ab)), closes [#69](https://github.com/rodrigogs/whats-reader/issues/69)
+
 ## [1.29.4](https://github.com/rodrigogs/whats-reader/compare/v1.29.3...v1.29.4) (2026-03-31)
 
 
