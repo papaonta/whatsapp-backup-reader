@@ -1,9 +1,14 @@
 <script lang="ts">
+import { openElectronFile, openZipFilePicker } from '$lib/helpers/file-picker';
 import * as m from '$lib/paraglide/messages';
 import Icon from './Icon.svelte';
 
 interface Props {
-	onFilesSelected: (files: FileList) => void;
+	onFilesSelected: (
+		files: FileList,
+		handles?: FileSystemFileHandle[],
+		paths?: string[],
+	) => void;
 	accept?: string;
 	isLoading?: boolean;
 	loadingProgress?: number;
@@ -29,12 +34,33 @@ function handleDragLeave(e: DragEvent) {
 	isDragOver = false;
 }
 
-function handleDrop(e: DragEvent) {
+async function handleDrop(e: DragEvent) {
 	e.preventDefault();
 	isDragOver = false;
 
 	if (e.dataTransfer?.files && e.dataTransfer.files.length > 0) {
-		onFilesSelected(e.dataTransfer.files);
+		// Capture FileSystemFileHandles for persistence (Chrome 86+)
+		// IMPORTANT: Start ALL promises synchronously before any await,
+		// because DataTransferItems become invalid after the first async yield
+		let handles: FileSystemFileHandle[] | undefined;
+		if (
+			e.dataTransfer.items &&
+			'getAsFileSystemHandle' in DataTransferItem.prototype
+		) {
+			const promises = Array.from(e.dataTransfer.items).map((item) => {
+				try {
+					return item.getAsFileSystemHandle();
+				} catch {
+					return Promise.resolve(null);
+				}
+			});
+			const resolved = await Promise.all(promises);
+			const fileHandles = resolved.filter(
+				(h): h is FileSystemFileHandle => h?.kind === 'file',
+			);
+			if (fileHandles.length > 0) handles = fileHandles;
+		}
+		onFilesSelected(e.dataTransfer.files, handles);
 	}
 }
 
@@ -45,32 +71,33 @@ function handleFileSelect(e: Event) {
 	}
 }
 
-function openFilePicker() {
-	fileInput?.click();
+async function openFilePicker() {
+	const result = await openZipFilePicker(true);
+	if (result) {
+		onFilesSelected(result.files, result.handles);
+		return;
+	}
+	// showOpenFilePicker not supported — fall back to regular input
+	if (!('showOpenFilePicker' in window)) {
+		fileInput?.click();
+	}
 }
 
 async function openElectronFilePicker() {
 	if (window.electronAPI) {
-		const result = await window.electronAPI.openFile();
+		const result = await openElectronFile();
 		if (result) {
-			// Convert ArrayBuffer to File-like object
-			const blob = new Blob([result.buffer]);
-			const file = new File([blob], result.name, {
-				type: getMimeType(result.name),
-			});
 			const dataTransfer = new DataTransfer();
-			dataTransfer.items.add(file);
-			onFilesSelected(dataTransfer.files);
+			dataTransfer.items.add(result.file);
+			onFilesSelected(
+				dataTransfer.files,
+				undefined,
+				result.path ? [result.path] : undefined,
+			);
 		}
 	} else {
 		openFilePicker();
 	}
-}
-
-function getMimeType(filename: string): string {
-	const ext = filename.toLowerCase().split('.').pop();
-	if (ext === 'zip') return 'application/zip';
-	return 'application/octet-stream';
 }
 </script>
 
@@ -84,7 +111,13 @@ function getMimeType(filename: string): string {
 	onclick={openElectronFilePicker}
 	role="button"
 	tabindex="0"
-	onkeydown={(e) => e.key === 'Enter' && openElectronFilePicker()}
+	aria-label={m.dropzone_title()}
+	onkeydown={(e) => {
+		if (e.key === 'Enter' || e.key === ' ') {
+			e.preventDefault();
+			openElectronFilePicker();
+		}
+	}}
 >
 	<input
 		bind:this={fileInput}

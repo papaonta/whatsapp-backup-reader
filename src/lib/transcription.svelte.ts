@@ -162,6 +162,36 @@ export function getAllTranscriptions(): Record<string, string> {
 }
 
 /**
+ * Get transcriptions for a specific chat (for persistence).
+ * Filters by provided message IDs to avoid cross-chat leakage.
+ */
+export function getTranscriptionsForChat(
+	messageIds: string[],
+): Record<string, string> {
+	const idSet = new Set(messageIds);
+	const result: Record<string, string> = {};
+	for (const [key, value] of transcriptionStore) {
+		if (idSet.has(key)) {
+			result[key] = value;
+		}
+	}
+	return result;
+}
+
+/**
+ * Set transcriptions for a chat (for restoration).
+ * Merges into the runtime store keyed by bare messageId.
+ */
+export function setTranscriptionsForChat(
+	transcriptions: Record<string, string>,
+): void {
+	for (const [messageId, text] of Object.entries(transcriptions)) {
+		transcriptionStore.set(messageId, text);
+	}
+	transcriptionStore = new Map(transcriptionStore);
+}
+
+/**
  * Pre-load the Whisper model
  */
 export function preloadModel(): void {

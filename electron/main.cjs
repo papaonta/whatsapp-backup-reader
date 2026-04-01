@@ -182,7 +182,11 @@ ipcMain.handle('dialog:openFile', async () => {
 	return {
 		path: filePath,
 		name: fileName,
-		buffer: fileContent.buffer,
+		// Slice the buffer to avoid sending the entire Node.js Buffer pool
+		buffer: fileContent.buffer.slice(
+			fileContent.byteOffset,
+			fileContent.byteOffset + fileContent.byteLength,
+		),
 	};
 });
 
@@ -225,6 +229,57 @@ ipcMain.handle('fs:readDir', async (_event, dirPath) => {
 
 ipcMain.handle('fs:fileExists', async (_event, filePath) => {
 	return fs.existsSync(filePath);
+});
+
+// Read file from absolute path (for persistence)
+ipcMain.handle('file:readFromPath', async (_event, filePath) => {
+	try {
+		if (typeof filePath !== 'string') {
+			return { success: false, error: 'Invalid file path' };
+		}
+		const normalized = path.resolve(filePath);
+		// Require absolute path and reject path traversal segments
+		if (!path.isAbsolute(filePath)) {
+			return { success: false, error: 'Invalid file path' };
+		}
+		if (filePath.split(/[/\\]+/).includes('..')) {
+			return { success: false, error: 'Invalid file path' };
+		}
+		if (path.extname(normalized).toLowerCase() !== '.zip') {
+			return { success: false, error: 'Only .zip files are allowed' };
+		}
+
+		// Pre-check with lstat to reject symlinks (works cross-platform including Windows)
+		const lst = await fs.promises.lstat(normalized);
+		if (!lst.isFile() || lst.isSymbolicLink()) {
+			return { success: false, error: 'Path is not a regular file' };
+		}
+
+		// Use O_NOFOLLOW when available to reject symlinks atomically (not supported on Windows)
+		const openFlags =
+			typeof fs.constants.O_NOFOLLOW === 'number'
+				? fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW
+				: fs.constants.O_RDONLY;
+		const fd = await fs.promises.open(normalized, openFlags);
+		try {
+			const content = await fd.readFile();
+			return {
+				success: true,
+				buffer: content.buffer.slice(
+					content.byteOffset,
+					content.byteOffset + content.byteLength,
+				),
+				name: path.basename(normalized),
+			};
+		} finally {
+			await fd.close();
+		}
+	} catch (error) {
+		return {
+			success: false,
+			error: error instanceof Error ? error.message : String(error),
+		};
+	}
 });
 
 ipcMain.handle('shell:openExternal', async (_event, url) => {

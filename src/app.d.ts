@@ -13,6 +13,13 @@ interface ReadResult {
 	error?: string;
 }
 
+interface FileReadResult {
+	success: boolean;
+	buffer?: ArrayBuffer;
+	name?: string;
+	error?: string;
+}
+
 interface DirEntry {
 	name: string;
 	isDirectory: boolean;
@@ -31,6 +38,7 @@ interface ElectronAPI {
 	readFile: (filePath: string) => Promise<ReadResult>;
 	readDir: (dirPath: string) => Promise<ReadDirResult>;
 	fileExists: (filePath: string) => Promise<boolean>;
+	readFileFromPath: (filePath: string) => Promise<FileReadResult>;
 	openExternal: (url: string) => Promise<void>;
 	platform: string;
 	isElectron: boolean;
@@ -53,8 +61,39 @@ declare global {
 		// interface Platform {}
 	}
 
+	// File System Access API types (experimental, not in default TypeScript libs)
+	// See https://wicg.github.io/file-system-access/
+	interface FileSystemHandlePermissionDescriptor {
+		mode?: 'read' | 'readwrite';
+	}
+
+	interface OpenFilePickerOptions {
+		types?: {
+			description?: string;
+			accept: Record<string, string[]>;
+		}[];
+		multiple?: boolean;
+		excludeAcceptAllOption?: boolean;
+	}
+
+	interface FileSystemFileHandle {
+		queryPermission(
+			descriptor?: FileSystemHandlePermissionDescriptor,
+		): Promise<PermissionState>;
+		requestPermission(
+			descriptor?: FileSystemHandlePermissionDescriptor,
+		): Promise<PermissionState>;
+	}
+
+	interface DataTransferItem {
+		getAsFileSystemHandle(): Promise<FileSystemHandle | null>;
+	}
+
 	interface Window {
 		electronAPI?: ElectronAPI;
+		showOpenFilePicker(
+			options?: OpenFilePickerOptions,
+		): Promise<FileSystemFileHandle[]>;
 	}
 }
 

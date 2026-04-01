@@ -1,19 +1,14 @@
 <script lang="ts">
 import { floating } from '$lib/actions/floating';
+import { formatRelativeDate } from '$lib/helpers/format';
 import * as m from '$lib/paraglide/messages';
 import { getLocale } from '$lib/paraglide/runtime';
-import type { ChatData } from '$lib/state.svelte';
+import type { ChatData, LoadingChat } from '$lib/state.svelte';
 import { getAvailableLanguages } from '$lib/transcription.svelte';
+import ChatAvatar from './ChatAvatar.svelte';
 import Icon from './Icon.svelte';
 import IconButton from './IconButton.svelte';
 import ListItemButton from './ListItemButton.svelte';
-
-interface LoadingChat {
-	id: string;
-	filename: string;
-	progress: number;
-	stage: 'reading' | 'extracting' | 'parsing';
-}
 
 interface Props {
 	chats: ChatData[];
@@ -25,6 +20,8 @@ interface Props {
 	autoLoadMediaByChat?: Map<string, boolean>;
 	onAutoLoadMediaChange?: (chatTitle: string, enabled: boolean) => void;
 	loadingChats?: LoadingChat[];
+	rememberedChats?: Set<string>;
+	onToggleRemember?: (chatTitle: string, enabled: boolean) => void;
 }
 
 let {
@@ -37,13 +34,15 @@ let {
 	autoLoadMediaByChat = new Map(),
 	onAutoLoadMediaChange,
 	loadingChats = [],
+	rememberedChats = new Set(),
+	onToggleRemember,
 }: Props = $props();
 
-const stageLabels = {
+const stageLabels = $derived({
 	reading: m.loading_reading(),
 	extracting: m.loading_extracting(),
 	parsing: m.loading_parsing(),
-};
+});
 
 // Context menu state
 let contextMenuIndex = $state<number | null>(null);
@@ -123,25 +122,27 @@ function handleAutoLoadToggle() {
 	closeContextMenu();
 }
 
-function formatDate(date: Date | null): string {
-	if (!date) return '';
-	const locale = getLocale();
-	const now = new Date();
-	const diff = now.getTime() - date.getTime();
-	const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+function isRemembered(chatTitle: string): boolean {
+	return rememberedChats.has(chatTitle);
+}
 
-	if (days === 0) {
-		return date.toLocaleTimeString(locale, {
-			hour: '2-digit',
-			minute: '2-digit',
-		});
-	} else if (days === 1) {
-		return m.time_yesterday();
-	} else if (days < 7) {
-		return date.toLocaleDateString(locale, { weekday: 'short' });
-	} else {
-		return date.toLocaleDateString(locale, { month: 'short', day: 'numeric' });
+function handleToggleRemember() {
+	if (contextMenuIndex !== null && onToggleRemember) {
+		const chat = chats[contextMenuIndex];
+		const currentRemembered = isRemembered(chat.title);
+		onToggleRemember(chat.title, !currentRemembered);
 	}
+	closeContextMenu();
+}
+
+function formatDate(date: Date | null): string {
+	return formatRelativeDate(
+		date,
+		getLocale(),
+		m.time_today(),
+		m.time_yesterday(),
+		'compact',
+	);
 }
 
 function getLastMessage(chat: ChatData): string {
@@ -206,11 +207,7 @@ function getLastMessage(chat: ChatData): string {
 					tabindex="0"
 				>
 					<!-- Avatar -->
-					<div
-						class="w-12 h-12 rounded-full bg-[var(--color-whatsapp-teal)] flex items-center justify-center text-white font-semibold flex-shrink-0"
-					>
-						{chat.title.charAt(0).toUpperCase()}
-					</div>
+					<ChatAvatar name={chat.title} size="md" />
 
 					<!-- Chat info -->
 					<div class="flex-1 min-w-0 text-left">
@@ -297,7 +294,7 @@ function getLastMessage(chat: ChatData): string {
 				<ListItemButton class="justify-between" onclick={handleAutoLoadToggle}>
 					<span class="flex items-center gap-2">
 					<Icon name="image" size="sm" />
-						Auto-load Media
+						{m.auto_load_media()}
 					</span>
 					{#if isAutoLoadEnabled(chats[contextMenuIndex]?.title || '')}
 						<Icon name="check" size="sm" class="text-[var(--color-whatsapp-teal)]" />
@@ -305,6 +302,17 @@ function getLastMessage(chat: ChatData): string {
 				</ListItemButton>
 			{/if}
 			
+			<!-- Remember Conversation toggle -->
+			<ListItemButton class="justify-between" onclick={handleToggleRemember}>
+				<span class="flex items-center gap-2">
+					<Icon name="bookmark" size="sm" />
+					{m.persistence_remember_conversation()}
+				</span>
+				{#if isRemembered(chats[contextMenuIndex]?.title || '')}
+					<Icon name="check" size="sm" class="text-[var(--color-whatsapp-teal)]" />
+				{/if}
+			</ListItemButton>
+
 			<!-- Language submenu trigger -->
 			<div class="relative">
 				<ListItemButton
@@ -325,9 +333,9 @@ function getLastMessage(chat: ChatData): string {
 					<!-- svelte-ignore a11y_interactive_supports_focus -->
 					<div
 						class="fixed z-[60] bg-white dark:bg-gray-800 rounded-lg shadow-xl border border-gray-200 dark:border-gray-700 py-1 w-[160px] overflow-y-auto"
-						use:floating={{ 
-							reference: languageTriggerRef, 
-							placement: 'left-start', 
+						use:floating={{
+							reference: languageTriggerRef,
+							placement: 'left-start',
 							fallbackPlacements: ['right-start', 'bottom-start', 'bottom-end', 'top-start'],
 							offsetDistance: 4,
 							enableSizeConstraint: true
