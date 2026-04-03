@@ -46,17 +46,15 @@
 		"act:deploy": ".act/run workflow_dispatch -W .github/workflows/deploy.yml -j build"
 	},
 	"dependencies": {
-		"@floating-ui/dom": "^1.7.6",
-		"@huggingface/transformers": "^3.8.1",
-		"electron-updater": "^6.8.3",
-		"idb-keyval": "^6.2.2",
-		"jszip": "^3.10.1"
+		"electron-updater": "^6.8.3"
 	},
 	"overrides": {
 		"cookie": "^0.7.0"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "2.4.10",
+		"@floating-ui/dom": "^1.7.6",
+		"@huggingface/transformers": "^3.8.1",
 		"@inlang/cli": "^3.1.9",
 		"@inlang/paraglide-js": "2.15.1",
 		"@inlang/plugin-m-function-matcher": "^2.2.4",
@@ -71,6 +69,8 @@
 		"cross-env": "^10.1.0",
 		"electron": "^39.8.6",
 		"electron-builder": "~26.0.12",
+		"idb-keyval": "^6.2.2",
+		"jszip": "^3.10.1",
 		"semantic-release": "^25.0.3",
 		"svelte": "^5.55.1",
 		"svelte-check": "^4.4.6",
@@ -96,6 +96,9 @@
 			"electron/**/*",
 			"!**/*.map",
 			"!**/*.md",
+			"!**/*.ts",
+			"!**/*.d.mts",
+			"!**/tsconfig*",
 			"!**/LICENSE",
 			"!**/README",
 			"!**/.github",
@@ -103,7 +106,11 @@
 			"!**/tests",
 			"!**/__tests__",
 			"!**/docs",
-			"!**/examples"
+			"!**/examples",
+			"!build/og-image*.png",
+			"!build/apple-touch-icon.png",
+			"!build/web-app-manifest-*.png",
+			"!build/site.webmanifest"
 		],
 		"asarUnpack": [
 			"**/*.{node,dll}"

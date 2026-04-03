@@ -1,7 +1,7 @@
 <script lang="ts">
 import { tick } from 'svelte';
 import { browser } from '$app/environment';
-import favicon from '$lib/assets/favicon.svg';
+import favicon from '$lib/assets/favicon.png';
 import { getAutoUpdaterState, initAutoUpdater } from '$lib/auto-updater.svelte';
 import { bookmarksState } from '$lib/bookmarks.svelte';
 import {
