@@ -1,3 +1,10 @@
+## [1.30.3](https://github.com/rodrigogs/whats-reader/compare/v1.30.2...v1.30.3) (2026-04-03)
+
+
+### Performance Improvements
+
+* swap ONNX Runtime JSEP WASM for CPU-only variant ([3014cbd](https://github.com/rodrigogs/whats-reader/commit/3014cbdd6e3aa44ed080e46dbc9583d510e9f75f))
+
 ## [1.30.2](https://github.com/rodrigogs/whats-reader/compare/v1.30.1...v1.30.2) (2026-04-03)
 
 
