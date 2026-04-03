@@ -30,3 +30,6 @@ examples/chats/*.zip
 
 # Playwright MCP screenshots
 .playwright-mcp/
+
+# Local GitHub Actions secrets
+.act/secrets

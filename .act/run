@@ -1,0 +1,6 @@
+#!/bin/sh
+# Auto-detect Docker socket from active context, then delegate to act.
+# Respects DOCKER_HOST if already set.
+exec env \
+  DOCKER_HOST="${DOCKER_HOST:-$(docker context inspect -f '{{.Endpoints.docker.Host}}' 2>/dev/null)}" \
+  act "$@"

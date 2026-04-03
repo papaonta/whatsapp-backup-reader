@@ -1,0 +1,5 @@
+--container-daemon-socket /var/run/docker.sock
+--env ELECTRON_SKIP_BINARY_DOWNLOAD=1
+-P ubuntu-latest=catthehacker/ubuntu:act-latest
+-P macos-14=catthehacker/ubuntu:act-latest
+-P windows-latest=catthehacker/ubuntu:act-latest
