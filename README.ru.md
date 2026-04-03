@@ -1,7 +1,7 @@
 <h1 align="center">Читатель резервных копий WhatsApp</h1>
 
 <p align="center">
-  <img src="src/lib/assets/favicon.svg" width="100" height="100" alt="Читатель резервных копий WhatsApp" />
+  <img src="src/lib/assets/favicon.png" width="100" height="100" alt="Читатель резервных копий WhatsApp" />
 </p>
 
 <p align="center">

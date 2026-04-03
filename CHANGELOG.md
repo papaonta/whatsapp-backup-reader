@@ -1,3 +1,10 @@
+## [1.30.4](https://github.com/rodrigogs/whats-reader/compare/v1.30.3...v1.30.4) (2026-04-03)
+
+
+### Bug Fixes
+
+* update README images to reference favicon.png ([05c88f3](https://github.com/rodrigogs/whats-reader/commit/05c88f394f664700a7bbd20b8caea6d4be821a87))
+
 ## [1.30.3](https://github.com/rodrigogs/whats-reader/compare/v1.30.2...v1.30.3) (2026-04-03)
 
 

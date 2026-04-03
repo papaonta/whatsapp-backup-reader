@@ -1,7 +1,7 @@
 <h1 align="center">Lector de Respaldo de WhatsApp</h1>
 
 <p align="center">
-  <img src="src/lib/assets/favicon.svg" width="100" height="100" alt="Lector de Respaldo de WhatsApp" />
+  <img src="src/lib/assets/favicon.png" width="100" height="100" alt="Lector de Respaldo de WhatsApp" />
 </p>
 
 <p align="center">
