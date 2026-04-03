@@ -1,7 +1,7 @@
 <h1 align="center">WhatsApp 备份阅读器</h1>
 
 <p align="center">
-  <img src="src/lib/assets/favicon.svg" width="100" height="100" alt="WhatsApp 备份阅读器" />
+  <img src="src/lib/assets/favicon.png" width="100" height="100" alt="WhatsApp 备份阅读器" />
 </p>
 
 <p align="center">
