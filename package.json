@@ -1,7 +1,7 @@
 {
 	"name": "whats-reader",
 	"productName": "WhatsApp Backup Reader",
-	"version": "1.30.1",
+	"version": "1.30.2",
 	"description": "A desktop app to read and visualize WhatsApp chat exports",
 	"license": "AGPL-3.0",
 	"author": {
@@ -35,20 +35,26 @@
 		"electron:build:mac": "npm run build && electron-builder --mac",
 		"electron:build:win": "npm run build && electron-builder --win",
 		"electron:build:linux": "npm run build && electron-builder --linux",
-		"machine-translate": "inlang machine translate --project project.inlang"
+		"machine-translate": "inlang machine translate --project project.inlang",
+		"act:setup": "docker pull catthehacker/ubuntu:act-latest && test -f .act/secrets || cp .act/secrets.example .act/secrets",
+		"act:ci": "npm run act:ci:lint && npm run act:ci:typecheck && npm run act:ci:build",
+		"act:ci:lint": ".act/run push -W .github/workflows/ci.yml -e .act/events/push-dev.json -j lint",
+		"act:ci:typecheck": ".act/run push -W .github/workflows/ci.yml -e .act/events/push-dev.json -j typecheck",
+		"act:ci:build": ".act/run push -W .github/workflows/ci.yml -e .act/events/push-dev.json -j build",
+		"act:release": ".act/run push -W .github/workflows/release.yml --secret-file .act/secrets -e .act/events/push-main.json",
+		"act:build": ".act/run workflow_dispatch -W .github/workflows/build.yml --secret-file .act/secrets --input version=${VERSION:-0.0.0-local} --matrix platform:linux-x64",
+		"act:deploy": ".act/run workflow_dispatch -W .github/workflows/deploy.yml -j build"
 	},
 	"dependencies": {
-		"@floating-ui/dom": "^1.7.6",
-		"@huggingface/transformers": "^3.8.1",
-		"electron-updater": "^6.8.3",
-		"idb-keyval": "^6.2.2",
-		"jszip": "^3.10.1"
+		"electron-updater": "^6.8.3"
 	},
 	"overrides": {
 		"cookie": "^0.7.0"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "2.4.10",
+		"@floating-ui/dom": "^1.7.6",
+		"@huggingface/transformers": "^3.8.1",
 		"@inlang/cli": "^3.1.9",
 		"@inlang/paraglide-js": "2.15.1",
 		"@inlang/plugin-m-function-matcher": "^2.2.4",
@@ -63,6 +69,8 @@
 		"cross-env": "^10.1.0",
 		"electron": "^39.8.6",
 		"electron-builder": "~26.0.12",
+		"idb-keyval": "^6.2.2",
+		"jszip": "^3.10.1",
 		"semantic-release": "^25.0.3",
 		"svelte": "^5.55.1",
 		"svelte-check": "^4.4.6",
@@ -88,6 +96,9 @@
 			"electron/**/*",
 			"!**/*.map",
 			"!**/*.md",
+			"!**/*.ts",
+			"!**/*.d.mts",
+			"!**/tsconfig*",
 			"!**/LICENSE",
 			"!**/README",
 			"!**/.github",
@@ -95,7 +106,11 @@
 			"!**/tests",
 			"!**/__tests__",
 			"!**/docs",
-			"!**/examples"
+			"!**/examples",
+			"!build/og-image*.png",
+			"!build/apple-touch-icon.png",
+			"!build/web-app-manifest-*.png",
+			"!build/site.webmanifest"
 		],
 		"asarUnpack": [
 			"**/*.{node,dll}"
