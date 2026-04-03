@@ -1,3 +1,10 @@
+## [1.30.2](https://github.com/rodrigogs/whats-reader/compare/v1.30.1...v1.30.2) (2026-04-03)
+
+
+### Performance Improvements
+
+* reduce Electron app bundle size ([bf6b3b1](https://github.com/rodrigogs/whats-reader/commit/bf6b3b102d6cb5fdb3f8a6e06fb9c5e0a9240fe4))
+
 ## [1.30.1](https://github.com/rodrigogs/whats-reader/compare/v1.30.0...v1.30.1) (2026-04-01)
 
 
