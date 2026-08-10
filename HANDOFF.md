@@ -6,18 +6,32 @@ anytime, or keep it as your own running log.
 
 ## Paste this as your first message in the new session
 
-```
-Ini fork pribadi (papaonta/whatsapp-backup-reader) dari open-source
-"WhatsApp Backup Reader" (SvelteKit + Svelte 5 + Electron). Baca HANDOFF.md
-di root repo ini dulu buat konteks lengkap sebelum mulai kerja.
+Works from any empty folder — Claude clones the repo, installs deps, and
+reads the rest of the context itself.
 
-Ringkas: sesi sebelumnya (di Windows) saya (1) fix bug "Page Unresponsive"
-Chrome yang muncul tiap kali app pakai showOpenFilePicker() — solusinya
-ganti ke <input type="file"> biasa di semua tempat (FileDropZone,
-ReselectFileModal, sidebar import); dan (2) bikin fitur baru "Chat Lock"
-per-chat (PIN + opsional WebAuthn/Windows Hello/Touch ID) mirip fitur
-Chat Lock WhatsApp asli — lihat src/lib/components/LockPinModal.svelte,
-LockedChatPane.svelte, src/lib/helpers/lock-crypto.ts, webauthn.ts.
+```
+Clone https://github.com/papaonta/whatsapp-backup-reader.git ke folder ini,
+lalu npm install. Kalau npm install minta approve scripts (electron, sharp,
+esbuild, dll — biasanya udah nggak perlu karena allowScripts udah ke-commit
+di package.json, tapi jaga-jaga), jalanin npm approve-scripts
+--allow-scripts-pending. Setelah itu jalanin npm run dev buat mastiin
+jalan normal di localhost:5173.
+
+Ini fork pribadi dari open-source "WhatsApp Backup Reader" (SvelteKit +
+Svelte 5 + Electron). Sebelum mulai kerja apapun, baca HANDOFF.md di root
+repo ini — itu rangkuman lengkap dari sesi sebelumnya (di Windows): apa
+yang udah dibangun, kenapa, gimana cara ngetesnya, dan gap yang sengaja
+dibiarin. Remote "origin" itu upstream (read-only), remote yang bisa
+di-push itu "mine" (papaonta/whatsapp-backup-reader) — tambahin remote
+"mine" itu juga kalau belum ada, arahnya sama kayak URL clone di atas.
+
+Ringkas: sesi sebelumnya saya (1) fix bug "Page Unresponsive" Chrome yang
+muncul tiap kali app pakai showOpenFilePicker() — solusinya ganti ke
+<input type="file"> biasa di semua tempat (FileDropZone, ReselectFileModal,
+sidebar import); dan (2) bikin fitur baru "Chat Lock" per-chat (PIN +
+opsional WebAuthn/Windows Hello/Touch ID) mirip fitur Chat Lock WhatsApp
+asli — lihat src/lib/components/LockPinModal.svelte, LockedChatPane.svelte,
+src/lib/helpers/lock-crypto.ts, webauthn.ts.
 
 Sebelum nyaranin/ngubah apapun soal fitur lock ini, penting: ini CUMA UI
 gate lokal, BUKAN enkripsi (data chat tetap plaintext di IndexedDB) —
