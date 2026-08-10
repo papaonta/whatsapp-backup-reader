@@ -1,5 +1,5 @@
 <script lang="ts">
-import { openElectronFile, openZipFilePicker } from '$lib/helpers/file-picker';
+import { openElectronFile } from '$lib/helpers/file-picker';
 import * as m from '$lib/paraglide/messages';
 import Icon from './Icon.svelte';
 
@@ -54,10 +54,16 @@ async function handleDrop(e: DragEvent) {
 					return Promise.resolve(null);
 				}
 			});
-			const resolved = await Promise.all(promises);
-			const fileHandles = resolved.filter(
-				(h): h is FileSystemFileHandle => h?.kind === 'file',
-			);
+			// Use allSettled: a single rejected item (e.g. a non-file drag item)
+			// must not abort the whole drop and silently drop onFilesSelected.
+			const results = await Promise.allSettled(promises);
+			const fileHandles = results
+				.filter(
+					(r): r is PromiseFulfilledResult<FileSystemFileHandle | null> =>
+						r.status === 'fulfilled',
+				)
+				.map((r) => r.value)
+				.filter((h): h is FileSystemFileHandle => h?.kind === 'file');
 			if (fileHandles.length > 0) handles = fileHandles;
 		}
 		onFilesSelected(e.dataTransfer.files, handles);
@@ -71,16 +77,12 @@ function handleFileSelect(e: Event) {
 	}
 }
 
-async function openFilePicker() {
-	const result = await openZipFilePicker(true);
-	if (result) {
-		onFilesSelected(result.files, result.handles);
-		return;
-	}
-	// showOpenFilePicker not supported — fall back to regular input
-	if (!('showOpenFilePicker' in window)) {
-		fileInput?.click();
-	}
+function openFilePicker() {
+	// Deliberately use the plain <input type="file"> dialog instead of
+	// showOpenFilePicker(): Chrome spuriously flags the tab as "Page
+	// Unresponsive" while that picker's promise is pending and the user
+	// is still browsing. Drag-and-drop still captures a FileSystemFileHandle.
+	fileInput?.click();
 }
 
 async function openElectronFilePicker() {

@@ -34,7 +34,6 @@ import Toast from '$lib/components/Toast.svelte';
 import {
 	getElectronFilePath,
 	openElectronFile,
-	openZipFilePicker,
 } from '$lib/helpers/file-picker';
 import { sanitizeFilename } from '$lib/helpers/format';
 import {
@@ -315,12 +314,11 @@ async function handleSidebarImport() {
 			);
 		}
 	} else {
-		const result = await openZipFilePicker(true);
-		if (result) {
-			handleFilesSelected(result.files, result.handles);
-		} else if (!('showOpenFilePicker' in window)) {
-			sidebarFileInput?.click();
-		}
+		// Deliberately use the plain <input type="file"> dialog instead of
+		// showOpenFilePicker(): Chrome spuriously flags the tab as "Page
+		// Unresponsive" while that picker's promise is pending and the user
+		// is still browsing. Drag-and-drop still captures a FileSystemFileHandle.
+		sidebarFileInput?.click();
 	}
 }
 
