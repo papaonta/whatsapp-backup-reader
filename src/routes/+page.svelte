@@ -24,6 +24,8 @@ import Icon from '$lib/components/Icon.svelte';
 import IconButton from '$lib/components/IconButton.svelte';
 import ListItemButton from '$lib/components/ListItemButton.svelte';
 import LocaleSwitcher from '$lib/components/LocaleSwitcher.svelte';
+import LockedChatPane from '$lib/components/LockedChatPane.svelte';
+import LockPinModal from '$lib/components/LockPinModal.svelte';
 import MediaGallery from '$lib/components/MediaGallery.svelte';
 import Modal from '$lib/components/Modal.svelte';
 import ModalContent from '$lib/components/ModalContent.svelte';
@@ -44,8 +46,10 @@ import {
 import * as m from '$lib/paraglide/messages';
 import { parseZipFile, readFileAsArrayBuffer } from '$lib/parser';
 import {
+	clearLockPin,
 	findPersistedChatByTitle,
 	getDontShowRestoreModal,
+	getLockPin,
 	getPersistedChats,
 	isElectronPathReference,
 	type PersistedChatMetadata,
@@ -175,6 +179,52 @@ let languageByChat = $state<Map<string, string>>(new Map());
 
 // Store auto-load media preference per chat (chatTitle -> enabled)
 let autoLoadMediaByChat = $state<Map<string, boolean>>(new Map());
+
+// Store chat-lock flag per chat (chatTitle -> locked)
+let lockedByChat = $state<Map<string, boolean>>(new Map());
+// Chats unlocked (PIN entered) for the current session only — never persisted,
+// so every locked chat re-locks after a reload/restart.
+let unlockedThisSession = $state<Set<string>>(new Set());
+// Pending PIN modal request; null when no lock modal should be shown.
+let lockPinRequest = $state<{
+	mode: 'setup' | 'unlock';
+	purpose?: 'view' | 'remove';
+	chatTitle: string;
+} | null>(null);
+
+const lockedChatTitles = $derived(
+	new Set(
+		[...lockedByChat].filter(([, locked]) => locked).map(([title]) => title),
+	),
+);
+const isSelectedChatLocked = $derived(
+	!!appState.selectedChat &&
+		lockedByChat.get(appState.selectedChat.title) === true &&
+		!unlockedThisSession.has(appState.selectedChat.title),
+);
+// True while viewing a locked chat that was unlocked (PIN/biometric) this
+// session — the state that shows the "Lock now" re-lock button.
+const isViewingUnlockedLockedChat = $derived(
+	!!appState.selectedChat &&
+		lockedByChat.get(appState.selectedChat.title) === true &&
+		unlockedThisSession.has(appState.selectedChat.title),
+);
+
+// Auto re-lock a session-unlocked chat the moment the user navigates away
+// from it, mirroring the previousChatId pattern in ChatView.svelte.
+let previousSelectedChatTitle = $state<string | null>(null);
+$effect(() => {
+	const currentTitle = appState.selectedChat?.title ?? null;
+	if (
+		previousSelectedChatTitle &&
+		previousSelectedChatTitle !== currentTitle &&
+		unlockedThisSession.has(previousSelectedChatTitle)
+	) {
+		unlockedThisSession.delete(previousSelectedChatTitle);
+		unlockedThisSession = new Set(unlockedThisSession);
+	}
+	previousSelectedChatTitle = currentTitle;
+});
 
 // Persistence state
 let rememberedChats = $state<Set<string>>(new Set());
@@ -788,6 +838,10 @@ async function loadChatFromBuffer(
 					);
 					perspectiveByChat = new Map(perspectiveByChat);
 				}
+				if (restoredMetadata.settings.locked !== undefined) {
+					lockedByChat.set(chatData.title, restoredMetadata.settings.locked);
+					lockedByChat = new Map(lockedByChat);
+				}
 			}
 		}
 
@@ -834,6 +888,7 @@ async function rememberChat(chatTitle: string) {
 				language: languageByChat.get(chatTitle) || 'portuguese',
 				autoLoadMedia: autoLoadMediaByChat.get(chatTitle) || false,
 				perspective: perspectiveByChat.get(chatTitle) || null,
+				locked: lockedByChat.get(chatTitle) || false,
 			},
 			fileRef?.filePath,
 			fileHandle,
@@ -875,6 +930,95 @@ function handleToggleRemember(chatTitle: string, enabled: boolean) {
 	} else {
 		forgetChat(chatTitle);
 	}
+}
+
+// Keep a remembered chat's persisted settings.locked in sync with lockedByChat.
+// No-op for chats that were never "Remember"-d (nothing persisted to update).
+async function persistLockedFlag(chatTitle: string, locked: boolean) {
+	const persistedId = chatFileReferences.get(chatTitle)?.persistedId;
+	if (!persistedId) return;
+	try {
+		await updatePersistedChat(persistedId, {
+			settings: {
+				language: languageByChat.get(chatTitle) || 'portuguese',
+				autoLoadMedia: autoLoadMediaByChat.get(chatTitle) || false,
+				perspective: perspectiveByChat.get(chatTitle) || null,
+				locked,
+			},
+		});
+	} catch (e) {
+		console.error('Failed to persist lock state:', e);
+	}
+}
+
+function applyLock(chatTitle: string) {
+	lockedByChat.set(chatTitle, true);
+	lockedByChat = new Map(lockedByChat);
+	persistLockedFlag(chatTitle, true);
+}
+
+function applyUnlockPermanent(chatTitle: string) {
+	lockedByChat.set(chatTitle, false);
+	lockedByChat = new Map(lockedByChat);
+	unlockedThisSession.delete(chatTitle);
+	unlockedThisSession = new Set(unlockedThisSession);
+	persistLockedFlag(chatTitle, false);
+}
+
+function closeLockPinModal() {
+	lockPinRequest = null;
+}
+
+async function handleToggleLock(chatTitle: string, enable: boolean) {
+	if (enable) {
+		const existingPin = await getLockPin();
+		if (!existingPin) {
+			lockPinRequest = { mode: 'setup', chatTitle };
+			return;
+		}
+		applyLock(chatTitle);
+		showToast(m.lock_chat_locked_toast(), 'success');
+	} else {
+		lockPinRequest = { mode: 'unlock', purpose: 'remove', chatTitle };
+	}
+}
+
+function handleRequestUnlock(chatTitle: string) {
+	lockPinRequest = { mode: 'unlock', purpose: 'view', chatTitle };
+}
+
+// Re-hide a session-unlocked locked chat immediately, without switching
+// chats. Symmetric with the rule that locking never requires a PIN.
+function handleLockNow(chatTitle: string) {
+	unlockedThisSession.delete(chatTitle);
+	unlockedThisSession = new Set(unlockedThisSession);
+}
+
+function handleLockPinSuccess() {
+	if (!lockPinRequest) return;
+	const { mode, purpose, chatTitle } = lockPinRequest;
+	if (mode === 'setup') {
+		applyLock(chatTitle);
+		showToast(m.lock_chat_locked_toast(), 'success');
+	} else if (purpose === 'remove') {
+		applyUnlockPermanent(chatTitle);
+		showToast(m.lock_chat_unlocked_toast(), 'success');
+	} else {
+		unlockedThisSession.add(chatTitle);
+		unlockedThisSession = new Set(unlockedThisSession);
+	}
+	closeLockPinModal();
+}
+
+async function handleForgotPin() {
+	await clearLockPin();
+	for (const title of lockedChatTitles) {
+		await persistLockedFlag(title, false);
+	}
+	lockedByChat = new Map();
+	unlockedThisSession = new Set();
+	closeLockPinModal();
+	showToast(m.lock_forgot_pin_done(), 'success');
 }
 </script>
 
@@ -991,7 +1135,7 @@ function handleToggleRemember(chatTitle: string, enabled: boolean) {
 		<!-- Main app layout -->
 		<div class="flex-1 flex flex-col overflow-hidden">
 			<!-- Top header bar - always full width -->
-			{#if appState.selectedChat}
+			{#if appState.selectedChat && !isSelectedChatLocked}
 				{#snippet perspectiveSelectorContent()}
 					<DropdownHeader title={m.perspective_view_as()} />
 					
@@ -1134,6 +1278,17 @@ function handleToggleRemember(chatTitle: string, enabled: boolean) {
 											<Icon name="chart-bar" size="sm" />
 											<span>{m.stats_view()}</span>
 										</ListItemButton>
+										{#if isViewingUnlockedLockedChat}
+											<ListItemButton
+												onclick={() => {
+													showChatOptionsDropdown = false;
+													handleLockNow(appState.selectedChat?.title ?? '');
+												}}
+											>
+												<Icon name="lock" size="sm" />
+												<span>{m.lock_now_button()}</span>
+											</ListItemButton>
+										{/if}
 									</DropdownList>
 								{/if}
 							</Dropdown>
@@ -1193,6 +1348,17 @@ function handleToggleRemember(chatTitle: string, enabled: boolean) {
 							>
 								<Icon name="chart-bar" size="md" />
 							</IconButton>
+							{#if isViewingUnlockedLockedChat}
+								<IconButton
+									theme="dark"
+									size="md"
+									onclick={() => handleLockNow(appState.selectedChat?.title ?? '')}
+									title={m.lock_now_button()}
+									aria-label={m.lock_now_button()}
+								>
+									<Icon name="lock" size="md" />
+								</IconButton>
+							{/if}
 						</div>
 
 						<!-- Theme toggle and language selector (always visible) -->
@@ -1210,6 +1376,34 @@ function handleToggleRemember(chatTitle: string, enabled: boolean) {
 								<Icon name="moon" size="md" class="text-white/80" />
 							{/if}
 						</IconButton>
+					</div>
+				</div>
+			{:else if appState.selectedChat}
+				<!-- Chat is locked - compact header, no participants/options menu -->
+				<div class="h-16 px-4 flex items-center gap-3 bg-[var(--color-whatsapp-dark-green)] text-white shadow-md flex-shrink-0">
+					<IconButton
+						theme="dark"
+						size="md"
+						class="-ml-2"
+						onclick={toggleSidebar}
+						aria-label={m.sidebar_toggle()}
+						title={m.sidebar_toggle()}
+					>
+						{#if showSidebar}
+							<Icon name="chevron-left" size="md" />
+						{:else}
+							<Icon name="menu" size="md" />
+						{/if}
+					</IconButton>
+					<div class="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center font-semibold">
+						{appState.selectedChat.title.charAt(0).toUpperCase()}
+					</div>
+					<div class="flex-1 min-w-0 flex items-center gap-2">
+						<h2 class="font-semibold truncate">{appState.selectedChat.title}</h2>
+						<span class="flex items-center gap-1 text-xs text-white/70 flex-shrink-0">
+							<Icon name="lock" size="xs" />
+							{m.lock_header_badge()}
+						</span>
 					</div>
 				</div>
 			{:else}
@@ -1280,6 +1474,8 @@ function handleToggleRemember(chatTitle: string, enabled: boolean) {
 						{loadingChats}
 						{rememberedChats}
 						onToggleRemember={handleToggleRemember}
+						lockedChats={lockedChatTitles}
+						onToggleLock={handleToggleLock}
 					/>
 				</div>
 			</div>
@@ -1294,7 +1490,11 @@ function handleToggleRemember(chatTitle: string, enabled: boolean) {
 			{/if}
 
 			<!-- Main content -->
-			{#if appState.selectedChat}
+			{#if appState.selectedChat && isSelectedChatLocked}
+				<LockedChatPane
+					onUnlock={() => handleRequestUnlock(appState.selectedChat?.title ?? '')}
+				/>
+			{:else if appState.selectedChat}
 				<div class="flex-1 flex flex-col overflow-hidden">
 					<!-- Search bar -->
 					<div class="p-3 bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
@@ -1504,6 +1704,18 @@ chatMetadata={reselectChatMetadata}
 onFileSelected={handleReselectFile}
 onSkip={handleSkipReselect}
 onClose={handleSkipReselect}
+/>
+{/if}
+
+<!-- Lock PIN Modal -->
+{#if lockPinRequest}
+<LockPinModal
+mode={lockPinRequest.mode}
+purpose={lockPinRequest.purpose}
+chatTitle={lockPinRequest.chatTitle}
+onSuccess={handleLockPinSuccess}
+onForgotPin={lockPinRequest.mode === 'unlock' ? handleForgotPin : undefined}
+onClose={closeLockPinModal}
 />
 {/if}
 

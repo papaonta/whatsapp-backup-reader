@@ -22,6 +22,8 @@ interface Props {
 	loadingChats?: LoadingChat[];
 	rememberedChats?: Set<string>;
 	onToggleRemember?: (chatTitle: string, enabled: boolean) => void;
+	lockedChats?: Set<string>;
+	onToggleLock?: (chatTitle: string, enabled: boolean) => void;
 }
 
 let {
@@ -36,6 +38,8 @@ let {
 	loadingChats = [],
 	rememberedChats = new Set(),
 	onToggleRemember,
+	lockedChats = new Set(),
+	onToggleLock,
 }: Props = $props();
 
 const stageLabels = $derived({
@@ -135,6 +139,19 @@ function handleToggleRemember() {
 	closeContextMenu();
 }
 
+function isLocked(chatTitle: string): boolean {
+	return lockedChats.has(chatTitle);
+}
+
+function handleToggleLock() {
+	if (contextMenuIndex !== null && onToggleLock) {
+		const chat = chats[contextMenuIndex];
+		const currentLocked = isLocked(chat.title);
+		onToggleLock(chat.title, !currentLocked);
+	}
+	closeContextMenu();
+}
+
 function formatDate(date: Date | null): string {
 	return formatRelativeDate(
 		date,
@@ -219,8 +236,13 @@ function getLastMessage(chat: ChatData): string {
 								{formatDate(chat.endDate)}
 							</span>
 						</div>
-						<p class="text-sm text-gray-500 dark:text-gray-400 truncate mt-0.5">
-							{getLastMessage(chat)}
+						<p class="text-sm text-gray-500 dark:text-gray-400 truncate mt-0.5 flex items-center gap-1">
+							{#if isLocked(chat.title)}
+								<Icon name="lock" size="xs" class="flex-shrink-0" />
+								<span class="italic">{m.chat_locked_preview()}</span>
+							{:else}
+								{getLastMessage(chat)}
+							{/if}
 						</p>
 						<div class="flex items-center gap-2 mt-1">
 							<span class="text-xs text-gray-400 dark:text-gray-500">
@@ -309,6 +331,19 @@ function getLastMessage(chat: ChatData): string {
 					{m.persistence_remember_conversation()}
 				</span>
 				{#if isRemembered(chats[contextMenuIndex]?.title || '')}
+					<Icon name="check" size="sm" class="text-[var(--color-whatsapp-teal)]" />
+				{/if}
+			</ListItemButton>
+
+			<!-- Lock chat toggle -->
+			<ListItemButton class="justify-between" onclick={handleToggleLock}>
+				<span class="flex items-center gap-2">
+					<Icon name="lock" size="sm" />
+					{isLocked(chats[contextMenuIndex]?.title || '')
+						? m.chat_remove_lock()
+						: m.chat_lock()}
+				</span>
+				{#if isLocked(chats[contextMenuIndex]?.title || '')}
 					<Icon name="check" size="sm" class="text-[var(--color-whatsapp-teal)]" />
 				{/if}
 			</ListItemButton>

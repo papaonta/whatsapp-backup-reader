@@ -1,43 +1,12 @@
 /**
  * Shared file-picker helpers for ZIP imports.
  *
- * Centralises the showOpenFilePicker (Web) and electronAPI.openFile (Electron)
- * patterns so they are not duplicated across FileDropZone, ReselectFileModal,
- * and +page.svelte.
+ * Centralises the electronAPI.openFile (Electron) pattern so it isn't
+ * duplicated across FileDropZone, ReselectFileModal, and +page.svelte.
+ * The web build deliberately uses a plain <input type="file"> instead of
+ * showOpenFilePicker() — the latter makes Chrome spuriously flag the tab as
+ * "Page Unresponsive" while its promise is pending.
  */
-
-/**
- * Open the native file picker for ZIP files (Web — File System Access API).
- * Returns null if the API is not supported or the user cancelled.
- */
-export async function openZipFilePicker(multiple = false): Promise<{
-	files: FileList;
-	handles?: FileSystemFileHandle[];
-} | null> {
-	if (!('showOpenFilePicker' in window)) return null;
-
-	try {
-		const handles = await window.showOpenFilePicker({
-			types: [
-				{
-					description: 'WhatsApp ZIP files',
-					accept: { 'application/zip': ['.zip'] },
-				},
-			],
-			multiple,
-		});
-		if (!handles?.length) return null;
-
-		const dt = new DataTransfer();
-		for (const h of handles) {
-			dt.items.add(await h.getFile());
-		}
-		return { files: dt.files, handles };
-	} catch {
-		// User cancelled or API failed
-		return null;
-	}
-}
 
 /**
  * Open a file via Electron's native dialog and return a File + absolute path.

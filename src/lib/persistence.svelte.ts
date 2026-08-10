@@ -20,6 +20,7 @@
 import { del, get, keys, set } from 'idb-keyval';
 import { browser } from '$app/environment';
 import type { Bookmark } from './bookmarks.svelte';
+import type { StoredPin } from './helpers/lock-crypto';
 import type { ChatData } from './state.svelte';
 
 export interface PersistedChatMetadata {
@@ -46,6 +47,7 @@ export interface PersistedChatMetadata {
 		language: string;
 		autoLoadMedia: boolean;
 		perspective: string | null;
+		locked: boolean;
 	};
 }
 
@@ -58,6 +60,8 @@ interface ValidationResult {
 const PERSISTENCE_PREFIX = 'whatsapp-persisted-chat-';
 const HANDLE_PREFIX = 'whatsapp-file-handle-';
 const DONT_SHOW_KEY = 'whatsapp-dont-show-restore-modal';
+const LOCK_PIN_KEY = 'whatsapp-lock-settings';
+const LOCK_WEBAUTHN_KEY = 'whatsapp-lock-webauthn-credential';
 
 // Number of message IDs to store for validation (helps with iOS exports that lack chat title)
 const VALIDATION_MESSAGE_ID_COUNT = 5;
@@ -159,6 +163,7 @@ export async function savePersistedChat(
 		language: string;
 		autoLoadMedia: boolean;
 		perspective: string | null;
+		locked: boolean;
 	},
 	filePath?: string, // For Electron
 	fileHandle?: FileSystemFileHandle, // For web with File System Access API
@@ -532,6 +537,84 @@ export async function setDontShowRestoreModal(value: boolean): Promise<void> {
 		await set(DONT_SHOW_KEY, value);
 	} catch (e) {
 		console.error('Failed to set dont show preference:', e);
+	}
+}
+
+/**
+ * Get the stored chat-lock PIN (hash + salt), or null if no PIN has been set
+ */
+export async function getLockPin(): Promise<StoredPin | null> {
+	if (!browser) return null;
+	try {
+		return (await get<StoredPin>(LOCK_PIN_KEY)) || null;
+	} catch (e) {
+		console.error('Failed to get lock PIN:', e);
+		return null;
+	}
+}
+
+/**
+ * Store the chat-lock PIN (hash + salt)
+ */
+export async function setLockPin(pin: StoredPin): Promise<void> {
+	if (!browser) return;
+	try {
+		await set(LOCK_PIN_KEY, pin);
+	} catch (e) {
+		console.error('Failed to set lock PIN:', e);
+	}
+}
+
+/**
+ * Clear the chat-lock PIN (used by the "forgot PIN" recovery flow)
+ */
+export async function clearLockPin(): Promise<void> {
+	if (!browser) return;
+	try {
+		await del(LOCK_PIN_KEY);
+		// Resetting the PIN resets biometric registration too, so no orphaned
+		// credential is left pointing at whatever was registered before.
+		await del(LOCK_WEBAUTHN_KEY);
+	} catch (e) {
+		console.error('Failed to clear lock PIN:', e);
+	}
+}
+
+/**
+ * Get the registered WebAuthn credential ID for biometric unlock, or null
+ * if none has been registered.
+ */
+export async function getWebAuthnCredentialId(): Promise<string | null> {
+	if (!browser) return null;
+	try {
+		return (await get<string>(LOCK_WEBAUTHN_KEY)) || null;
+	} catch (e) {
+		console.error('Failed to get WebAuthn credential:', e);
+		return null;
+	}
+}
+
+/**
+ * Store the WebAuthn credential ID used for biometric unlock
+ */
+export async function setWebAuthnCredentialId(id: string): Promise<void> {
+	if (!browser) return;
+	try {
+		await set(LOCK_WEBAUTHN_KEY, id);
+	} catch (e) {
+		console.error('Failed to set WebAuthn credential:', e);
+	}
+}
+
+/**
+ * Clear the registered WebAuthn credential ID
+ */
+export async function clearWebAuthnCredentialId(): Promise<void> {
+	if (!browser) return;
+	try {
+		await del(LOCK_WEBAUTHN_KEY);
+	} catch (e) {
+		console.error('Failed to clear WebAuthn credential:', e);
 	}
 }
 

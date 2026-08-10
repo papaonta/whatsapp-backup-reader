@@ -1,5 +1,5 @@
 <script lang="ts">
-import { openElectronFile, openZipFilePicker } from '$lib/helpers/file-picker';
+import { openElectronFile } from '$lib/helpers/file-picker';
 import * as m from '$lib/paraglide/messages';
 import type { PersistedChatMetadata } from '$lib/persistence.svelte';
 import Button from './Button.svelte';
@@ -82,26 +82,24 @@ function handleFileInput(e: Event) {
 	}
 }
 
-async function openBrowse() {
+function openBrowse() {
 	// In Electron, use the native dialog to capture the absolute file path
 	if (window.electronAPI) {
-		const result = await openElectronFile();
-		if (result?.file.name.toLowerCase().endsWith('.zip')) {
-			onFileSelected(result.file, result.path);
-		}
+		openElectronFile().then((result) => {
+			if (result?.file.name.toLowerCase().endsWith('.zip')) {
+				onFileSelected(result.file, result.path);
+			}
+		});
 		return;
 	}
-	// In Chrome/Edge, use showOpenFilePicker to capture a FileSystemFileHandle
-	// so the entry can be upgraded from 'reselect-required' to 'file-handle'
-	const result = await openZipFilePicker(false);
-	if (result?.handles?.[0]) {
-		const file = await result.handles[0].getFile();
-		onFileSelected(file, undefined, result.handles[0]);
-		return;
-	}
-	if (!('showOpenFilePicker' in window)) {
-		fileInputRef?.click();
-	}
+	// Deliberately use the plain <input type="file"> dialog instead of
+	// showOpenFilePicker(): Chrome spuriously flags the tab as "Page
+	// Unresponsive" while that picker's promise is pending, which made this
+	// modal's browse button appear to freeze after picking a file. Dragging
+	// the file onto the dropzone below still captures a FileSystemFileHandle
+	// (upgrading the saved entry so it won't need re-selecting next time) —
+	// only the click-to-browse path loses that upgrade, not drag-and-drop.
+	fileInputRef?.click();
 }
 
 function handleDropZoneKeydown(e: KeyboardEvent) {
