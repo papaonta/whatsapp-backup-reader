@@ -10,6 +10,7 @@ examples/chats/
 ├── android-group-chat/         # Android format - group conversation
 ├── ios-private-chat/          # iOS format - private conversation
 ├── ios-group-chat/            # iOS format - group conversation
+├── ios-dot-time-chat/         # iOS format - dot-separated time (locale variant)
 └── build-zips.sh             # Script to create test ZIP files
 ```
 
@@ -34,6 +35,21 @@ examples/chats/
   - Full 4-digit year
   - Includes seconds
   - May contain Unicode whitespace (U+202F) before AM/PM
+
+### iOS Format - Dot-Time Locale Variant
+- **Filename**: `_chat.txt` (underscore prefix)
+- **Date Format**: `[DD/MM/YY, HH.MM.SS]` (24-hour time, dot-separated)
+- **Example**: `[24/01/22, 17.21.53] Alice: Hello!`
+- **Characteristics**:
+  - Square brackets around timestamp
+  - 24-hour time with `.` instead of `:` as the separator (seen on iOS
+    devices set to locales such as Indonesian, where the system time
+    format uses dots)
+  - No AM/PM
+  - 2-digit year
+  - May contain a leading U+200E (LRM) invisible character before the
+    first message's text (e.g. the encryption notice)
+  - See fixture: `examples/chats/ios-dot-time-chat/`
 
 ## Building Test ZIP Files
 

@@ -217,7 +217,7 @@ const DATE_PATTERNS = [
 	// MM/DD/YY, HH:MM AM/PM - US format (12h) - MUST have AM/PM to be identified as US
 	{
 		regex:
-			/^(\d{1,2})\/(\d{1,2})\/(\d{2,4}),?\s+(\d{1,2}):(\d{2})(?::(\d{2}))?\s*([AP]M)\s*-\s*/i,
+			/^(\d{1,2})\/(\d{1,2})\/(\d{2,4}),?\s+(\d{1,2})[:.](\d{2})(?:[:.](\d{2}))?\s*([AP]M)\s*-\s*/i,
 		parse: (match: RegExpMatchArray) => {
 			const [, month, day, year, hours, minutes, seconds, ampm] = match;
 			return parseDateTime(
@@ -234,7 +234,7 @@ const DATE_PATTERNS = [
 	// DD/MM/YY, HH:MM - European/Brazilian format (24h) - No AM/PM means it's not US format
 	{
 		regex:
-			/^(\d{1,2})\/(\d{1,2})\/(\d{2,4}),?\s+(\d{1,2}):(\d{2})(?::(\d{2}))?\s*-\s*/,
+			/^(\d{1,2})\/(\d{1,2})\/(\d{2,4}),?\s+(\d{1,2})[:.](\d{2})(?:[:.](\d{2}))?\s*-\s*/,
 		parse: (match: RegExpMatchArray) => {
 			const [, day, month, year, hours, minutes, seconds] = match;
 			return parseDateTime(
@@ -250,7 +250,7 @@ const DATE_PATTERNS = [
 	// YYYY-MM-DD, HH:MM - ISO format
 	{
 		regex:
-			/^(\d{4})-(\d{1,2})-(\d{1,2}),?\s+(\d{1,2}):(\d{2})(?::(\d{2}))?\s*-\s*/,
+			/^(\d{4})-(\d{1,2})-(\d{1,2}),?\s+(\d{1,2})[:.](\d{2})(?:[:.](\d{2}))?\s*-\s*/,
 		parse: (match: RegExpMatchArray) => {
 			const [, year, month, day, hours, minutes, seconds] = match;
 			return parseDateTime(
@@ -266,7 +266,7 @@ const DATE_PATTERNS = [
 	// DD.MM.YY, HH:MM - German format
 	{
 		regex:
-			/^(\d{1,2})\.(\d{1,2})\.(\d{2,4}),?\s+(\d{1,2}):(\d{2})(?::(\d{2}))?\s*-\s*/,
+			/^(\d{1,2})\.(\d{1,2})\.(\d{2,4}),?\s+(\d{1,2})[:.](\d{2})(?:[:.](\d{2}))?\s*-\s*/,
 		parse: (match: RegExpMatchArray) => {
 			const [, day, month, year, hours, minutes, seconds] = match;
 			return parseDateTime(
@@ -282,7 +282,7 @@ const DATE_PATTERNS = [
 	// DD-MM-YY, HH:MM - Alternative European format with dashes
 	{
 		regex:
-			/^(\d{1,2})-(\d{1,2})-(\d{2,4}),?\s+(\d{1,2}):(\d{2})(?::(\d{2}))?\s*-\s*/,
+			/^(\d{1,2})-(\d{1,2})-(\d{2,4}),?\s+(\d{1,2})[:.](\d{2})(?:[:.](\d{2}))?\s*-\s*/,
 		parse: (match: RegExpMatchArray) => {
 			const [, day, month, year, hours, minutes, seconds] = match;
 			return parseDateTime(
@@ -298,7 +298,7 @@ const DATE_PATTERNS = [
 	// YYYY/MM/DD, HH:MM AM/PM - Asian format with 12-hour time
 	{
 		regex:
-			/^(\d{4})\/(\d{1,2})\/(\d{1,2}),?\s+(\d{1,2}):(\d{2})(?::(\d{2}))?\s*([AP]M)\s*-\s*/i,
+			/^(\d{4})\/(\d{1,2})\/(\d{1,2}),?\s+(\d{1,2})[:.](\d{2})(?:[:.](\d{2}))?\s*([AP]M)\s*-\s*/i,
 		parse: (match: RegExpMatchArray) => {
 			const [, year, month, day, hours, minutes, seconds, ampm] = match;
 			return parseDateTime(
@@ -315,7 +315,7 @@ const DATE_PATTERNS = [
 	// YYYY/MM/DD, HH:MM - Asian format (24-hour)
 	{
 		regex:
-			/^(\d{4})\/(\d{1,2})\/(\d{1,2}),?\s+(\d{1,2}):(\d{2})(?::(\d{2}))?\s*-\s*/,
+			/^(\d{4})\/(\d{1,2})\/(\d{1,2}),?\s+(\d{1,2})[:.](\d{2})(?:[:.](\d{2}))?\s*-\s*/,
 		parse: (match: RegExpMatchArray) => {
 			const [, year, month, day, hours, minutes, seconds] = match;
 			return parseDateTime(
@@ -333,7 +333,7 @@ const DATE_PATTERNS = [
 	// MUST be checked before non-AM/PM bracketed format
 	{
 		regex:
-			/^\[(\d{1,2})\/(\d{1,2})\/(\d{2,4}),?\s+(\d{1,2}):(\d{2}):(\d{2})[\s\u202F\u00A0]*([AP]M)\]\s*/i,
+			/^\[(\d{1,2})\/(\d{1,2})\/(\d{2,4}),?\s+(\d{1,2})[:.](\d{2})[:.](\d{2})[\s\u202F\u00A0]*([AP]M)\]\s*/i,
 		parse: (match: RegExpMatchArray) => {
 			const [, day, month, year, hours, minutes, seconds, ampm] = match;
 			return parseDateTime(
@@ -350,7 +350,7 @@ const DATE_PATTERNS = [
 	// [DD/MM/YY, HH:MM:SS] - Bracketed format (24-hour)
 	{
 		regex:
-			/^\[(\d{1,2})\/(\d{1,2})\/(\d{2,4}),?\s+(\d{1,2}):(\d{2}):(\d{2})\]\s*/,
+			/^\[(\d{1,2})\/(\d{1,2})\/(\d{2,4}),?\s+(\d{1,2})[:.](\d{2})[:.](\d{2})\]\s*/,
 		parse: (match: RegExpMatchArray) => {
 			const [, day, month, year, hours, minutes, seconds] = match;
 			return parseDateTime(
@@ -364,6 +364,10 @@ const DATE_PATTERNS = [
 		},
 	},
 ];
+
+// Zero-width space, LRM/RLM, U+2028-U+202F, BOM - iOS exports often
+// embed these around brackets/sender names/message text
+const INVISIBLE_CHARS_REGEX = /[\u200B-\u200F\u2028-\u202F\uFEFF]/g;
 
 function normalizeYear(year: number): number {
 	if (year < 100) {
@@ -574,7 +578,8 @@ export function parseChat(
 		}
 	};
 
-	for (const line of lines) {
+	for (const rawTextLine of lines) {
+		const line = rawTextLine.replace(INVISIBLE_CHARS_REGEX, '');
 		if (!line.trim()) continue;
 
 		const parsed = parseLine(line);

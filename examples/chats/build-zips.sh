@@ -61,6 +61,17 @@ else
     echo "❌ ios-private-chat folder not found"
 fi
 
+# Build ios-dot-time-chat.zip
+if [ -d "ios-dot-time-chat" ]; then
+    rm -f ios-dot-time-chat.zip
+    cd ios-dot-time-chat
+    zip -r ../ios-dot-time-chat.zip . -x "*.DS_Store"
+    cd ..
+    echo "✅ Created ios-dot-time-chat.zip"
+else
+    echo "❌ ios-dot-time-chat folder not found"
+fi
+
 echo ""
 echo "Done! ZIP files are ready for testing."
 echo ""
