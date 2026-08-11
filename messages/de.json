@@ -243,6 +243,7 @@
   "media_gallery_clear_filter": "Filter löschen",
   "media_gallery_participant_search_placeholder": "Suche nach Name oder Nummer...",
   "persistence_remember_conversation": "Unterhaltung Merken",
+  "persistence_forget_conversation": "Diesen Chat vergessen",
   "persistence_conversation_saved": "Die Unterhaltung wird gespeichert",
   "persistence_conversation_removed": "Unterhaltung aus gespeicherten Sitzungen entfernt",
   "persistence_restore_title": "Gespeicherte Unterhaltungen Wiederherstellen",

@@ -456,6 +456,10 @@ async function handleFilesSelected(
 					fileHandle: droppedHandle,
 				});
 
+				// Remember this chat automatically so it survives an app
+				// restart without requiring a manual per-chat toggle
+				await rememberChat(chatData.title, true);
+
 				// Start background indexing
 				startIndexWorker(chatData);
 
@@ -1031,7 +1035,7 @@ async function loadChatFromBuffer(
 	}
 }
 
-async function rememberChat(chatTitle: string) {
+async function rememberChat(chatTitle: string, silent = false) {
 	const chat = appState.chats.find((c) => c.title === chatTitle);
 	if (!chat) return;
 
@@ -1068,7 +1072,7 @@ async function rememberChat(chatTitle: string) {
 		}
 
 		addRemembered(chatTitle);
-		showToast(m.persistence_conversation_saved(), 'success');
+		if (!silent) showToast(m.persistence_conversation_saved(), 'success');
 	} catch (e) {
 		console.error('Failed to save conversation:', e);
 		showToast(m.persistence_save_failed(), 'error');

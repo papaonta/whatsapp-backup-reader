@@ -324,15 +324,20 @@ function getLastMessage(chat: ChatData): string {
 				</ListItemButton>
 			{/if}
 			
-			<!-- Remember Conversation toggle -->
+			<!-- Remember Conversation toggle - chats are remembered by default on
+			     import, so this reads as an opt-out ("Forget this chat") in the
+			     common case and only falls back to the opt-in label for a chat
+			     someone previously forgot -->
 			<ListItemButton class="justify-between" onclick={handleToggleRemember}>
 				<span class="flex items-center gap-2">
-					<Icon name="bookmark" size="sm" />
-					{m.persistence_remember_conversation()}
+					<Icon
+						name={isRemembered(chats[contextMenuIndex]?.title || '') ? 'bookmark' : 'bookmark-outline'}
+						size="sm"
+					/>
+					{isRemembered(chats[contextMenuIndex]?.title || '')
+						? m.persistence_forget_conversation()
+						: m.persistence_remember_conversation()}
 				</span>
-				{#if isRemembered(chats[contextMenuIndex]?.title || '')}
-					<Icon name="check" size="sm" class="text-[var(--color-whatsapp-teal)]" />
-				{/if}
 			</ListItemButton>
 
 			<!-- Lock chat toggle -->

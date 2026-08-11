@@ -247,6 +247,7 @@
   "media_gallery_participant_search_placeholder": "Search by name or number...",
   "media_gallery_participant_no_match": "No participant matches \"{query}\"",
   "persistence_remember_conversation": "Remember Conversation",
+  "persistence_forget_conversation": "Forget this chat",
   "persistence_conversation_saved": "Conversation will be remembered",
   "persistence_conversation_removed": "Conversation removed from saved sessions",
   "persistence_restore_title": "Restore Saved Conversations",

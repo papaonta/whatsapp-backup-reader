@@ -243,6 +243,7 @@
   "media_gallery_clear_filter": "Effacer le filtre",
   "media_gallery_participant_search_placeholder": "Recherche par nom ou numéro...",
   "persistence_remember_conversation": "Mémoriser la Conversation",
+  "persistence_forget_conversation": "Oublier cette discussion",
   "persistence_conversation_saved": "La conversation sera mémorisée",
   "persistence_conversation_removed": "Conversation supprimée des sessions enregistrées",
   "persistence_restore_title": "Restaurer les Conversations Sauvegardées",

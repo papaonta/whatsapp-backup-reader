@@ -243,6 +243,7 @@
   "media_gallery_clear_filter": "Очистить фильтр",
   "media_gallery_participant_search_placeholder": "Поиск по имени или номеру...",
   "persistence_remember_conversation": "Запомнить Разговор",
+  "persistence_forget_conversation": "Забыть этот чат",
   "persistence_conversation_saved": "Разговор будет сохранён",
   "persistence_conversation_removed": "Разговор удалён из сохранённых сессий",
   "persistence_restore_title": "Восстановить Сохранённые Разговоры",

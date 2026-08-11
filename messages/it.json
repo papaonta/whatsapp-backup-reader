@@ -243,6 +243,7 @@
   "media_gallery_clear_filter": "Cancella filtro",
   "media_gallery_participant_search_placeholder": "Cerca per nome o numero...",
   "persistence_remember_conversation": "Ricorda Conversazione",
+  "persistence_forget_conversation": "Dimentica questa chat",
   "persistence_conversation_saved": "La conversazione verrà ricordata",
   "persistence_conversation_removed": "Conversazione rimossa dalle sessioni salvate",
   "persistence_restore_title": "Ripristina Conversazioni Salvate",
