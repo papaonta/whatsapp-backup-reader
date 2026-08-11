@@ -314,5 +314,6 @@
   "merge_chats_success": "Merged {count} chats: {newCount} new message{newPlural}, {duplicateCount} duplicate{duplicatePlural} skipped",
   "chat_not_saved": "Not saved",
   "persistence_reselect_browse_hint": "Tip: drag and drop the file above instead of using Browse, so it's remembered without asking again next time.",
-  "persistence_reselect_mismatch": "That file doesn't match \"{chatTitle}\" - please choose the correct export."
+  "persistence_reselect_mismatch": "That file doesn't match \"{chatTitle}\" - please choose the correct export.",
+  "persistence_delete_saved": "Delete this saved conversation"
 }

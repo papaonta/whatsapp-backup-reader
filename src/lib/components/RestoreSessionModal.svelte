@@ -7,6 +7,7 @@ import { setDontShowRestoreModal } from '$lib/persistence.svelte';
 import Button from './Button.svelte';
 import ChatAvatar from './ChatAvatar.svelte';
 import Icon from './Icon.svelte';
+import IconButton from './IconButton.svelte';
 import Modal from './Modal.svelte';
 import ModalHeader from './ModalHeader.svelte';
 
@@ -15,9 +16,11 @@ interface Props {
 	onRestore: (chatIds: string[]) => void;
 	onStartFresh: () => void;
 	onClose: () => void;
+	onDelete: (chatId: string) => void;
 }
 
-let { persistedChats, onRestore, onStartFresh, onClose }: Props = $props();
+let { persistedChats, onRestore, onStartFresh, onClose, onDelete }: Props =
+	$props();
 
 let selectedChatIds = $state<Set<string>>(new Set());
 let dontShowAgain = $state(false);
@@ -38,6 +41,14 @@ function selectAll() {
 
 function deselectAll() {
 	selectedChatIds = new Set();
+}
+
+function handleDelete(e: MouseEvent, chatId: string) {
+	e.stopPropagation();
+	const newSet = new Set(selectedChatIds);
+	newSet.delete(chatId);
+	selectedChatIds = newSet;
+	onDelete(chatId);
 }
 
 async function handleRestore() {
@@ -87,13 +98,15 @@ async function handleStartFresh() {
 		<!-- Scrollable chat list -->
 		<div class="flex-1 overflow-y-auto px-4 sm:px-6 py-3 flex flex-col gap-2 sm:gap-3">
 			{#each persistedChats as chat (chat.id)}
-				<button
-					type="button"
-					class="group flex items-center gap-3 sm:gap-4 p-3 sm:p-4 rounded-lg sm:rounded-xl border-2 transition-all text-left
+				<div
+					role="button"
+					tabindex="0"
+					class="group flex items-center gap-3 sm:gap-4 p-3 sm:p-4 rounded-lg sm:rounded-xl border-2 transition-all text-left cursor-pointer
 						{selectedChatIds.has(chat.id)
 							? 'border-[var(--color-whatsapp-teal)] bg-[var(--color-whatsapp-light-green)] dark:bg-[var(--color-whatsapp-dark-green)]/20 shadow-md'
 							: 'border-gray-200 dark:border-gray-700 hover:border-[var(--color-whatsapp-teal)]/40 hover:bg-gray-50 dark:hover:bg-gray-800/50'}"
 					onclick={() => toggleChat(chat.id)}
+					onkeydown={(e) => e.key === 'Enter' && toggleChat(chat.id)}
 				>
 					<!-- Avatar -->
 					<ChatAvatar
@@ -131,6 +144,20 @@ async function handleStartFresh() {
 						</div>
 					</div>
 
+					<!-- Delete this saved conversation permanently -->
+					<div class="flex-shrink-0">
+						<IconButton
+							theme="subtle"
+							size="sm"
+							dangerHover
+							onclick={(e) => handleDelete(e, chat.id)}
+							title={m.persistence_delete_saved()}
+							aria-label={m.persistence_delete_saved()}
+						>
+							<Icon name="trash" size="sm" />
+						</IconButton>
+					</div>
+
 					<!-- Checkbox indicator -->
 					<div class="flex-shrink-0">
 						<div
@@ -144,7 +171,7 @@ async function handleStartFresh() {
 							{/if}
 						</div>
 					</div>
-				</button>
+				</div>
 			{/each}
 		</div>
 

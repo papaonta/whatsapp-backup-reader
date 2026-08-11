@@ -960,6 +960,22 @@ function handleStartFresh() {
 	persistedChatsToRestore = [];
 }
 
+// Permanently delete a saved conversation that hasn't been restored into
+// the sidebar yet - the only path to remove a stale entry the user
+// doesn't have the original file for anymore
+async function handleDeletePersistedChat(id: string) {
+	try {
+		await removePersistedChat(id);
+		persistedChatsToRestore = persistedChatsToRestore.filter(
+			(c) => c.id !== id,
+		);
+		showToast(m.persistence_conversation_removed(), 'success');
+	} catch (e) {
+		console.error('Failed to remove saved conversation:', e);
+		showToast(m.persistence_remove_failed(), 'error');
+	}
+}
+
 // Load chat from buffer with optional restoration metadata
 async function loadChatFromBuffer(
 	buffer: ArrayBuffer,
@@ -1949,6 +1965,7 @@ persistedChats={persistedChatsToRestore}
 onRestore={handleRestoreChats}
 onStartFresh={handleStartFresh}
 onClose={handleStartFresh}
+onDelete={handleDeletePersistedChat}
 />
 {/if}
 
