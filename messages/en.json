@@ -302,5 +302,13 @@
   "on_this_day_title": "{yearsAgo} year{plural} ago today",
   "on_this_day_dismiss": "Dismiss",
   "export_chat": "Export chat",
-  "export_chat_success": "Chat exported"
+  "export_chat_success": "Chat exported",
+  "merge_chats_action": "Merge with another chat…",
+  "merge_chats_modal_title": "Merge chats",
+  "merge_chats_title_label": "Merged chat name",
+  "merge_chats_select_prompt": "Select the other export(s) to merge in:",
+  "merge_chats_no_other_chats": "No other chats to merge with. Import another export of this conversation first.",
+  "merge_chats_button": "Merge",
+  "merge_chats_cancel": "Cancel",
+  "merge_chats_success": "Merged {count} chats: {newCount} new message{newPlural}, {duplicateCount} duplicate{duplicatePlural} skipped"
 }

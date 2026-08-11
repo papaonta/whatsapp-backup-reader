@@ -267,5 +267,13 @@
   "on_this_day_title": "{yearsAgo} jaar geleden, op deze dag",
   "on_this_day_dismiss": "Sluiten",
   "export_chat": "Chat exporteren",
-  "export_chat_success": "Chat geëxporteerd"
+  "export_chat_success": "Chat geëxporteerd",
+  "merge_chats_action": "Samenvoegen met andere chat…",
+  "merge_chats_modal_title": "Chats samenvoegen",
+  "merge_chats_title_label": "Naam van samengevoegde chat",
+  "merge_chats_select_prompt": "Selecteer de andere export(s) om samen te voegen:",
+  "merge_chats_no_other_chats": "Geen andere chats om mee samen te voegen. Importeer eerst nog een export van dit gesprek.",
+  "merge_chats_button": "Samenvoegen",
+  "merge_chats_cancel": "Annuleren",
+  "merge_chats_success": "{count} chats samengevoegd: {newCount} nieuwe berichten, {duplicateCount} duplicaten overgeslagen"
 }

@@ -267,5 +267,13 @@
   "on_this_day_title": "{yearsAgo} anni fa, in questo stesso giorno",
   "on_this_day_dismiss": "Ignora",
   "export_chat": "Esporta chat",
-  "export_chat_success": "Chat esportata"
+  "export_chat_success": "Chat esportata",
+  "merge_chats_action": "Unisci con un'altra chat…",
+  "merge_chats_modal_title": "Unisci chat",
+  "merge_chats_title_label": "Nome della chat unita",
+  "merge_chats_select_prompt": "Seleziona le altre esportazioni da unire:",
+  "merge_chats_no_other_chats": "Nessun'altra chat con cui unire. Importa prima un'altra esportazione di questa conversazione.",
+  "merge_chats_button": "Unisci",
+  "merge_chats_cancel": "Annulla",
+  "merge_chats_success": "{count} chat unite: {newCount} nuovi messaggi, {duplicateCount} duplicati ignorati"
 }

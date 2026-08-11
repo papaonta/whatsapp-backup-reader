@@ -267,5 +267,13 @@
   "on_this_day_title": "Vor {yearsAgo} Jahren an diesem Tag",
   "on_this_day_dismiss": "Schließen",
   "export_chat": "Chat exportieren",
-  "export_chat_success": "Chat exportiert"
+  "export_chat_success": "Chat exportiert",
+  "merge_chats_action": "Mit anderem Chat zusammenführen…",
+  "merge_chats_modal_title": "Chats zusammenführen",
+  "merge_chats_title_label": "Name des zusammengeführten Chats",
+  "merge_chats_select_prompt": "Wähle die anderen Exporte zum Zusammenführen aus:",
+  "merge_chats_no_other_chats": "Keine anderen Chats zum Zusammenführen. Importiere zuerst einen weiteren Export dieser Unterhaltung.",
+  "merge_chats_button": "Zusammenführen",
+  "merge_chats_cancel": "Abbrechen",
+  "merge_chats_success": "{count} Chats zusammengeführt: {newCount} neue Nachrichten, {duplicateCount} Duplikate übersprungen"
 }

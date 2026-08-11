@@ -267,5 +267,13 @@
   "on_this_day_title": "Hace {yearsAgo} año{plural}, tal día como hoy",
   "on_this_day_dismiss": "Descartar",
   "export_chat": "Exportar chat",
-  "export_chat_success": "Chat exportado"
+  "export_chat_success": "Chat exportado",
+  "merge_chats_action": "Combinar con otro chat…",
+  "merge_chats_modal_title": "Combinar chats",
+  "merge_chats_title_label": "Nombre del chat combinado",
+  "merge_chats_select_prompt": "Selecciona las otras exportaciones para combinar:",
+  "merge_chats_no_other_chats": "No hay otros chats para combinar. Importa primero otra exportación de esta conversación.",
+  "merge_chats_button": "Combinar",
+  "merge_chats_cancel": "Cancelar",
+  "merge_chats_success": "{count} chats combinados: {newCount} mensajes nuevos, {duplicateCount} duplicados omitidos"
 }

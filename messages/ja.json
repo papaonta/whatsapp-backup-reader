@@ -267,5 +267,13 @@
   "on_this_day_title": "{yearsAgo}年前の今日",
   "on_this_day_dismiss": "閉じる",
   "export_chat": "チャットをエクスポート",
-  "export_chat_success": "チャットをエクスポートしました"
+  "export_chat_success": "チャットをエクスポートしました",
+  "merge_chats_action": "他のチャットと統合…",
+  "merge_chats_modal_title": "チャットを統合",
+  "merge_chats_title_label": "統合後のチャット名",
+  "merge_chats_select_prompt": "統合する他のエクスポートを選択してください：",
+  "merge_chats_no_other_chats": "統合できる他のチャットがありません。先にこの会話の別のエクスポートをインポートしてください。",
+  "merge_chats_button": "統合",
+  "merge_chats_cancel": "キャンセル",
+  "merge_chats_success": "{count}件のチャットを統合しました：新規メッセージ{newCount}件、重複{duplicateCount}件をスキップ"
 }

@@ -27,6 +27,7 @@ import LocaleSwitcher from '$lib/components/LocaleSwitcher.svelte';
 import LockedChatPane from '$lib/components/LockedChatPane.svelte';
 import LockPinModal from '$lib/components/LockPinModal.svelte';
 import MediaGallery from '$lib/components/MediaGallery.svelte';
+import MergeChatsModal from '$lib/components/MergeChatsModal.svelte';
 import Modal from '$lib/components/Modal.svelte';
 import ModalContent from '$lib/components/ModalContent.svelte';
 import ModalHeader from '$lib/components/ModalHeader.svelte';
@@ -41,6 +42,7 @@ import {
 	openElectronFile,
 } from '$lib/helpers/file-picker';
 import { sanitizeFilename } from '$lib/helpers/format';
+import { mergeChats } from '$lib/helpers/merge-chats';
 import {
 	dismissOnThisDay,
 	findOnThisDayMatch,
@@ -122,6 +124,7 @@ let showMediaGallery = $state(false);
 let showParticipants = $state(false);
 let participantStats = $state<Map<string, number> | null>(null);
 let scrollToMessageId = $state<string | null>(null);
+let showMergeChatsModal = $state(false);
 
 // Toast notification state
 let toastMessage = $state<string | null>(null);
@@ -662,6 +665,108 @@ function handleExportChat() {
 		`${sanitizeFilename(appState.selectedChat.title)}.html`,
 	);
 	showToast(m.export_chat_success());
+}
+
+async function handleMergeChats(otherChats: ChatData[], mergedTitle: string) {
+	if (!appState.selectedChat) return;
+	const currentChat = appState.selectedChat;
+	const sourceChats = [currentChat, ...otherChats];
+
+	const merged = mergeChats(sourceChats, mergedTitle);
+	const totalSourceMessages = sourceChats.reduce(
+		(sum, c) => sum + c.messageCount,
+		0,
+	);
+	const newCount = merged.messageCount - currentChat.messageCount;
+	const duplicateCount = totalSourceMessages - merged.messageCount;
+
+	// Remap bookmarks from every source chat onto the merged message IDs -
+	// message IDs are regenerated during merge, so old messageIds no longer
+	// point anywhere. Bookmarks are keyed by chat title app-wide, so if two
+	// source chats happen to share a title (common - they're exports of the
+	// same conversation), only process that title's bookmarks once.
+	//
+	// Removing before adding matters: generateDeterministicId is keyed by
+	// chatIdentifier, and that's the chat's *derived title* (see
+	// zip-parser.ts's parseChat(chatContent, titleHint) call), not the
+	// filename. When mergedTitle equals a source chat's original title -
+	// the common case, since the picker defaults to it - an unchanged
+	// message regenerates the exact same ID it already had. Adding the
+	// (identical-ID) replacement before removing the old one would leave
+	// both rows sharing one messageId, and removeBookmark's filter deletes
+	// every row matching that ID - wiping out the row we just added.
+	const sourceTitles = new Set(sourceChats.map((c) => c.title));
+	for (const sourceTitle of sourceTitles) {
+		const sourceBookmarks = bookmarksState.getBookmarksForChat(sourceTitle);
+		for (const bookmark of sourceBookmarks) {
+			const previewStart = bookmark.messagePreview.replace(/\.\.\.$/, '');
+			const match = merged.messages.find(
+				(msg) =>
+					msg.timestamp.toISOString() === bookmark.messageTimestamp &&
+					msg.sender === bookmark.sender &&
+					msg.content.startsWith(previewStart),
+			);
+			if (!match) continue;
+			bookmarksState.removeBookmark(bookmark.messageId);
+			bookmarksState.addBookmark({
+				messageId: match.id,
+				chatId: mergedTitle,
+				comment: bookmark.comment,
+				messageContent: match.content,
+				sender: match.sender,
+				messageTimestamp: match.timestamp,
+			});
+		}
+	}
+
+	// Remove old entries (highest index first so earlier removals don't
+	// shift the indices of chats not yet removed). Matched by object
+	// identity, not title - two source chats commonly share a title, and
+	// title-matching would also sweep up an unrelated, unselected chat that
+	// happens to share it.
+	const indicesToRemove = sourceChats
+		.map((source) => appState.chats.indexOf(source))
+		.filter((i) => i !== -1)
+		.sort((a, b) => b - a);
+	for (const index of indicesToRemove) {
+		appState.removeChat(index);
+	}
+
+	appState.addChat(merged);
+	startIndexWorker(merged);
+
+	// Clean up persisted records and per-chat maps for absorbed source
+	// titles (the merged chat keeps mergedTitle going forward)
+	for (const title of sourceTitles) {
+		if (title === mergedTitle) continue;
+		chatFileReferences.delete(title);
+		const persistedChat = await findPersistedChatByTitle(title);
+		if (persistedChat) {
+			await removePersistedChat(persistedChat.id);
+		}
+		removeRemembered(title);
+		perspectiveByChat.delete(title);
+		lockedByChat.delete(title);
+		languageByChat.delete(title);
+		autoLoadMediaByChat.delete(title);
+		unlockedThisSession.delete(title);
+	}
+	perspectiveByChat = new Map(perspectiveByChat);
+	lockedByChat = new Map(lockedByChat);
+	languageByChat = new Map(languageByChat);
+	autoLoadMediaByChat = new Map(autoLoadMediaByChat);
+	unlockedThisSession = new Set(unlockedThisSession);
+
+	showMergeChatsModal = false;
+	showToast(
+		m.merge_chats_success({
+			count: sourceChats.length,
+			newCount,
+			newPlural: newCount === 1 ? '' : 's',
+			duplicateCount,
+			duplicatePlural: duplicateCount === 1 ? '' : 's',
+		}),
+	);
 }
 
 // Check for persisted chats on app load (one-time)
@@ -1347,6 +1452,15 @@ async function handleForgotPin() {
 											<Icon name="download" size="sm" />
 											<span>{m.export_chat()}</span>
 										</ListItemButton>
+										<ListItemButton
+											onclick={() => {
+												showChatOptionsDropdown = false;
+												showMergeChatsModal = true;
+											}}
+										>
+											<Icon name="upload" size="sm" />
+											<span>{m.merge_chats_action()}</span>
+										</ListItemButton>
 										{#if isViewingUnlockedLockedChat}
 											<ListItemButton
 												onclick={() => {
@@ -1425,6 +1539,15 @@ async function handleForgotPin() {
 								aria-label={m.export_chat()}
 							>
 								<Icon name="download" size="md" />
+							</IconButton>
+							<IconButton
+								theme="dark"
+								size="md"
+								onclick={() => (showMergeChatsModal = true)}
+								title={m.merge_chats_action()}
+								aria-label={m.merge_chats_action()}
+							>
+								<Icon name="upload" size="md" />
 							</IconButton>
 							{#if isViewingUnlockedLockedChat}
 								<IconButton
@@ -1756,6 +1879,16 @@ async function handleForgotPin() {
 						{/if}
 					</ModalContent>
 				</Modal>
+
+				<!-- Merge chats modal -->
+				{#if showMergeChatsModal}
+					<MergeChatsModal
+						currentChat={appState.selectedChat}
+						otherChats={appState.chats.filter((_, i) => i !== appState.selectedChatIndex)}
+						onMerge={handleMergeChats}
+						onClose={() => (showMergeChatsModal = false)}
+					/>
+				{/if}
 			{:else}
 				<!-- No chat selected -->
 				<div class="flex-1 flex items-center justify-center bg-gray-50 dark:bg-gray-900">

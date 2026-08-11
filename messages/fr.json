@@ -267,5 +267,13 @@
   "on_this_day_title": "Il y a {yearsAgo} an{plural}, jour pour jour",
   "on_this_day_dismiss": "Ignorer",
   "export_chat": "Exporter la discussion",
-  "export_chat_success": "Discussion exportée"
+  "export_chat_success": "Discussion exportée",
+  "merge_chats_action": "Fusionner avec une autre discussion…",
+  "merge_chats_modal_title": "Fusionner des discussions",
+  "merge_chats_title_label": "Nom de la discussion fusionnée",
+  "merge_chats_select_prompt": "Sélectionnez les autres exports à fusionner :",
+  "merge_chats_no_other_chats": "Aucune autre discussion à fusionner. Importez d'abord un autre export de cette conversation.",
+  "merge_chats_button": "Fusionner",
+  "merge_chats_cancel": "Annuler",
+  "merge_chats_success": "{count} discussions fusionnées : {newCount} nouveaux messages, {duplicateCount} doublons ignorés"
 }

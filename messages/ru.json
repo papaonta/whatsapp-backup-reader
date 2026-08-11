@@ -267,5 +267,13 @@
   "on_this_day_title": "{yearsAgo} лет назад в этот день",
   "on_this_day_dismiss": "Скрыть",
   "export_chat": "Экспортировать чат",
-  "export_chat_success": "Чат экспортирован"
+  "export_chat_success": "Чат экспортирован",
+  "merge_chats_action": "Объединить с другим чатом…",
+  "merge_chats_modal_title": "Объединить чаты",
+  "merge_chats_title_label": "Название объединённого чата",
+  "merge_chats_select_prompt": "Выберите другие экспорты для объединения:",
+  "merge_chats_no_other_chats": "Нет других чатов для объединения. Сначала импортируйте другой экспорт этого разговора.",
+  "merge_chats_button": "Объединить",
+  "merge_chats_cancel": "Отмена",
+  "merge_chats_success": "{count} чатов объединено: {newCount} новых сообщений, {duplicateCount} дубликатов пропущено"
 }

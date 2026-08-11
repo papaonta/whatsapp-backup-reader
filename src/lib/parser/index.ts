@@ -3,6 +3,7 @@
 export type { ChatMessage, ParsedChat } from './chat-parser';
 export {
 	formatTime,
+	generateDeterministicId,
 	getChatStats,
 	groupMessagesByDate,
 	parseChat,

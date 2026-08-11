@@ -518,7 +518,7 @@ function parseLine(line: string): {
  * Uses a collision resolution strategy: if two messages would have the same hash,
  * a counter suffix is added to make them unique while still being deterministic.
  */
-function generateDeterministicId(
+export function generateDeterministicId(
 	chatIdentifier: string,
 	timestamp: Date,
 	sender: string | null,

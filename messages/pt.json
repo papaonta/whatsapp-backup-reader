@@ -267,5 +267,13 @@
   "on_this_day_title": "Há {yearsAgo} ano{plural}, neste mesmo dia",
   "on_this_day_dismiss": "Dispensar",
   "export_chat": "Exportar conversa",
-  "export_chat_success": "Conversa exportada"
+  "export_chat_success": "Conversa exportada",
+  "merge_chats_action": "Mesclar com outra conversa…",
+  "merge_chats_modal_title": "Mesclar conversas",
+  "merge_chats_title_label": "Nome da conversa mesclada",
+  "merge_chats_select_prompt": "Selecione as outras exportações para mesclar:",
+  "merge_chats_no_other_chats": "Nenhuma outra conversa para mesclar. Importe primeiro outra exportação desta conversa.",
+  "merge_chats_button": "Mesclar",
+  "merge_chats_cancel": "Cancelar",
+  "merge_chats_success": "{count} conversas mescladas: {newCount} novas mensagens, {duplicateCount} duplicatas ignoradas"
 }

@@ -267,5 +267,13 @@
   "on_this_day_title": "{yearsAgo}年前的今天",
   "on_this_day_dismiss": "关闭",
   "export_chat": "导出聊天记录",
-  "export_chat_success": "聊天记录已导出"
+  "export_chat_success": "聊天记录已导出",
+  "merge_chats_action": "与其他聊天合并…",
+  "merge_chats_modal_title": "合并聊天",
+  "merge_chats_title_label": "合并后的聊天名称",
+  "merge_chats_select_prompt": "选择要合并的其他导出记录：",
+  "merge_chats_no_other_chats": "没有其他可合并的聊天。请先导入此对话的另一份导出记录。",
+  "merge_chats_button": "合并",
+  "merge_chats_cancel": "取消",
+  "merge_chats_success": "已合并{count}个聊天：{newCount}条新消息，跳过{duplicateCount}条重复"
 }
