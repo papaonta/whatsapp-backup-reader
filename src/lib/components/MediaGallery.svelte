@@ -8,6 +8,7 @@ import {
 	type MediaTypeFilter,
 } from '$lib/gallery.svelte';
 import { cleanupThumbnailUrls } from '$lib/gallery-thumbnails';
+import { triggerDownload } from '$lib/helpers/download';
 import { isMobileViewport } from '$lib/helpers/responsive';
 import * as m from '$lib/paraglide/messages';
 import { getLocale } from '$lib/paraglide/runtime';
@@ -169,16 +170,9 @@ async function downloadSelected(): Promise<void> {
 		}
 
 		const outBlob = await zip.generateAsync({ type: 'blob' });
-		const url = URL.createObjectURL(outBlob);
 		const chatTitle = sanitizeFilename(appState.selectedChat?.title ?? 'chat');
 		const date = new Date().toISOString().split('T')[0];
-		const a = document.createElement('a');
-		a.href = url;
-		a.download = `whats-reader-media-${chatTitle}-${date}.zip`;
-		document.body.appendChild(a);
-		a.click();
-		document.body.removeChild(a);
-		URL.revokeObjectURL(url);
+		triggerDownload(outBlob, `whats-reader-media-${chatTitle}-${date}.zip`);
 	} catch (err) {
 		downloadError = err instanceof Error ? err.message : String(err);
 	} finally {

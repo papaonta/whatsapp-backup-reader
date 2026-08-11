@@ -6,6 +6,8 @@
  * Users must export/import bookmarks manually each session.
  */
 
+import { triggerDownload } from '$lib/helpers/download';
+
 export interface Bookmark {
 	id: string;
 	messageId: string;
@@ -162,15 +164,10 @@ function createBookmarksState() {
 			const data = this.exportBookmarks();
 			const json = JSON.stringify(data, null, 2);
 			const blob = new Blob([json], { type: 'application/json' });
-			const url = URL.createObjectURL(blob);
-
-			const a = document.createElement('a');
-			a.href = url;
-			a.download = `whatsapp-bookmarks-${new Date().toISOString().split('T')[0]}.json`;
-			document.body.appendChild(a);
-			a.click();
-			document.body.removeChild(a);
-			URL.revokeObjectURL(url);
+			triggerDownload(
+				blob,
+				`whatsapp-bookmarks-${new Date().toISOString().split('T')[0]}.json`,
+			);
 		},
 
 		// Import bookmarks from JSON (merges with existing bookmarks)
