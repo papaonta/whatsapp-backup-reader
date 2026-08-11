@@ -1,6 +1,7 @@
 <script lang="ts">
 import { onDestroy, onMount, tick } from 'svelte';
 import { bookmarksState } from '$lib/bookmarks.svelte';
+import { buildSenderColorMap } from '$lib/helpers/sender-colors';
 import * as m from '$lib/paraglide/messages';
 import { getLocale } from '$lib/paraglide/runtime';
 import type { ChatMessage } from '$lib/parser';
@@ -56,6 +57,21 @@ let {
 // Performance optimization: chunk messages for progressive rendering
 const CHUNK_SIZE = 100; // Render 100 messages at a time
 const INITIAL_CHUNKS = 2; // Start with 2 chunks (200 messages from bottom)
+
+// Only differentiate sender name colors for actual group chats (more than 2
+// total distinct participants) - 1:1 chats keep the single teal regardless
+// of whether a Perspective is currently set
+const allSenders = $derived.by(() => {
+	const set = new Set<string>();
+	for (const msg of messages) {
+		if (!msg.isSystemMessage && msg.sender) {
+			set.add(msg.sender);
+		}
+	}
+	return set;
+});
+const isMultiSenderChat = $derived(allSenders.size > 2);
+const senderColorMap = $derived.by(() => buildSenderColorMap(allSenders));
 
 // Flatten messages with date separators for virtualization
 type RenderItem =
@@ -604,6 +620,7 @@ function handleScroll() {
 					{chatId}
 					{bookmarkedMessageIds}
 					isOwn={currentUser !== undefined && message.sender === currentUser}
+					senderColorClass={isMultiSenderChat ? senderColorMap.get(message.sender) : undefined}
 					showSender={true}
 					searchQuery={searchQuery}
 					isSearchMatch={matchResult}

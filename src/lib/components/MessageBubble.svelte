@@ -28,6 +28,7 @@ interface Props {
 	chatId: string;
 	bookmarkedMessageIds?: Map<string, Bookmark>;
 	isOwn?: boolean;
+	senderColorClass?: string;
 	showSender?: boolean;
 	searchQuery?: string;
 	isSearchMatch?: boolean;
@@ -42,6 +43,7 @@ let {
 	chatId,
 	bookmarkedMessageIds = new Map(),
 	isOwn = false,
+	senderColorClass,
 	showSender = true,
 	searchQuery = '',
 	isSearchMatch = false,
@@ -406,7 +408,7 @@ async function transcribeVoiceMessage() {
 			class="{bubbleWidthClass} rounded-lg px-3 py-2 shadow-sm transition-all {bubbleClass} {highlightClass} {shouldAnimate ? 'animate-search-highlight' : ''}"
 		>
 			{#if showSender && !isOwn}
-				<div class="text-xs font-semibold text-[var(--color-whatsapp-teal)] mb-1">
+				<div class="text-xs font-semibold {senderColorClass ?? 'text-[var(--color-whatsapp-teal)]'} mb-1">
 					{message.sender}
 				</div>
 			{/if}

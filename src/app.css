@@ -12,6 +12,16 @@
 	--color-chat-bg: #ECE5DD;
 	--color-message-out: #DCF8C6;
 	--color-message-in: #FFFFFF;
+
+	/* Per-sender name label colors for group chats (light) */
+	--color-sender-1: #E67E22;
+	--color-sender-2: #8E44AD;
+	--color-sender-3: #2980B9;
+	--color-sender-4: #C0392B;
+	--color-sender-5: #27AE60;
+	--color-sender-6: #B8860B;
+	--color-sender-7: #34568B;
+	--color-sender-8: #C2185B;
 }
 
 /* Dark mode theme overrides */
@@ -19,6 +29,16 @@
 	--color-chat-bg: #0B141A;
 	--color-message-out: #005C4B;
 	--color-message-in: #202C33;
+
+	/* Per-sender name label colors for group chats (dark) */
+	--color-sender-1: #F0A868;
+	--color-sender-2: #C39BD3;
+	--color-sender-3: #7FB3D9;
+	--color-sender-4: #E57373;
+	--color-sender-5: #6FCF97;
+	--color-sender-6: #E9C46A;
+	--color-sender-7: #90A4C4;
+	--color-sender-8: #F06292;
 }
 
 /* Chat background with WhatsApp-style pattern */
