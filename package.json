@@ -170,6 +170,7 @@
 		"esbuild@0.27.4": true,
 		"onnxruntime-node@1.21.0": true,
 		"protobufjs@7.5.4": true,
-		"sharp@0.34.5": true
+		"sharp@0.34.5": true,
+		"fsevents@2.3.3": true
 	}
 }
