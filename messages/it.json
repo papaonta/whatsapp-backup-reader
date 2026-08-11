@@ -265,5 +265,7 @@
   "persistence_remove_failed": "Impossibile rimuovere la conversazione",
   "close_notification": "Chiudi notifica",
   "on_this_day_title": "{yearsAgo} anni fa, in questo stesso giorno",
-  "on_this_day_dismiss": "Ignora"
+  "on_this_day_dismiss": "Ignora",
+  "export_chat": "Esporta chat",
+  "export_chat_success": "Chat esportata"
 }

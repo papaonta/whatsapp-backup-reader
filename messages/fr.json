@@ -265,5 +265,7 @@
   "persistence_remove_failed": "Échec de la suppression de la conversation",
   "close_notification": "Fermer la notification",
   "on_this_day_title": "Il y a {yearsAgo} an{plural}, jour pour jour",
-  "on_this_day_dismiss": "Ignorer"
+  "on_this_day_dismiss": "Ignorer",
+  "export_chat": "Exporter la discussion",
+  "export_chat_success": "Discussion exportée"
 }

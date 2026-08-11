@@ -265,5 +265,7 @@
   "persistence_remove_failed": "删除对话失败",
   "close_notification": "关闭通知",
   "on_this_day_title": "{yearsAgo}年前的今天",
-  "on_this_day_dismiss": "关闭"
+  "on_this_day_dismiss": "关闭",
+  "export_chat": "导出聊天记录",
+  "export_chat_success": "聊天记录已导出"
 }

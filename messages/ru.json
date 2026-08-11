@@ -265,5 +265,7 @@
   "persistence_remove_failed": "Не удалось удалить разговор",
   "close_notification": "Закрыть уведомление",
   "on_this_day_title": "{yearsAgo} лет назад в этот день",
-  "on_this_day_dismiss": "Скрыть"
+  "on_this_day_dismiss": "Скрыть",
+  "export_chat": "Экспортировать чат",
+  "export_chat_success": "Чат экспортирован"
 }

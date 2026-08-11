@@ -265,5 +265,7 @@
   "persistence_remove_failed": "会話の削除に失敗しました",
   "close_notification": "通知を閉じる",
   "on_this_day_title": "{yearsAgo}年前の今日",
-  "on_this_day_dismiss": "閉じる"
+  "on_this_day_dismiss": "閉じる",
+  "export_chat": "チャットをエクスポート",
+  "export_chat_success": "チャットをエクスポートしました"
 }

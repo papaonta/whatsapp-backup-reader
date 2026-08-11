@@ -265,5 +265,7 @@
   "persistence_remove_failed": "Gesprek verwijderen mislukt",
   "close_notification": "Melding sluiten",
   "on_this_day_title": "{yearsAgo} jaar geleden, op deze dag",
-  "on_this_day_dismiss": "Sluiten"
+  "on_this_day_dismiss": "Sluiten",
+  "export_chat": "Chat exporteren",
+  "export_chat_success": "Chat geëxporteerd"
 }

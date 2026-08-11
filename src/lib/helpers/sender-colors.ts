@@ -18,13 +18,40 @@ const SENDER_COLOR_CLASSES = [
 	'text-[var(--color-sender-8)]',
 ];
 
+// Same 8 values as app.css's light-theme --color-sender-1..8. Duplicated
+// here as the JS-side source of truth for contexts (like the standalone
+// chat export) that can't rely on the app's compiled Tailwind CSS.
+const SENDER_COLOR_HEX = [
+	'#E67E22',
+	'#8E44AD',
+	'#2980B9',
+	'#C0392B',
+	'#27AE60',
+	'#B8860B',
+	'#34568B',
+	'#C2185B',
+];
+
+function assignByPalette<T>(
+	senders: Iterable<string>,
+	palette: T[],
+): Map<string, T> {
+	const sorted = Array.from(senders).sort();
+	const map = new Map<string, T>();
+	sorted.forEach((sender, i) => {
+		map.set(sender, palette[i % palette.length]);
+	});
+	return map;
+}
+
 export function buildSenderColorMap(
 	senders: Iterable<string>,
 ): Map<string, string> {
-	const sorted = Array.from(senders).sort();
-	const map = new Map<string, string>();
-	sorted.forEach((sender, i) => {
-		map.set(sender, SENDER_COLOR_CLASSES[i % SENDER_COLOR_CLASSES.length]);
-	});
-	return map;
+	return assignByPalette(senders, SENDER_COLOR_CLASSES);
+}
+
+export function buildSenderColorHexMap(
+	senders: Iterable<string>,
+): Map<string, string> {
+	return assignByPalette(senders, SENDER_COLOR_HEX);
 }

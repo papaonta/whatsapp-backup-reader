@@ -34,6 +34,8 @@ import OnThisDayBanner from '$lib/components/OnThisDayBanner.svelte';
 import ReselectFileModal from '$lib/components/ReselectFileModal.svelte';
 import RestoreSessionModal from '$lib/components/RestoreSessionModal.svelte';
 import Toast from '$lib/components/Toast.svelte';
+import { triggerDownload } from '$lib/helpers/download';
+import { buildChatExportHtml } from '$lib/helpers/export-chat';
 import {
 	getElectronFilePath,
 	openElectronFile,
@@ -50,6 +52,7 @@ import {
 	isMobileViewport,
 } from '$lib/helpers/responsive';
 import * as m from '$lib/paraglide/messages';
+import { getLocale } from '$lib/paraglide/runtime';
 import {
 	parseZipFile,
 	readFileAsArrayBuffer,
@@ -644,6 +647,21 @@ async function handleViewOnThisDay() {
 	scrollToMessageId = null;
 	await tick();
 	scrollToMessageId = messageId;
+}
+
+function handleExportChat() {
+	if (!appState.selectedChat) return;
+	const html = buildChatExportHtml(
+		appState.selectedChat,
+		currentUser,
+		getLocale(),
+	);
+	const blob = new Blob([html], { type: 'text/html' });
+	triggerDownload(
+		blob,
+		`${sanitizeFilename(appState.selectedChat.title)}.html`,
+	);
+	showToast(m.export_chat_success());
 }
 
 // Check for persisted chats on app load (one-time)
@@ -1320,6 +1338,15 @@ async function handleForgotPin() {
 											<Icon name="chart-bar" size="sm" />
 											<span>{m.stats_view()}</span>
 										</ListItemButton>
+										<ListItemButton
+											onclick={() => {
+												showChatOptionsDropdown = false;
+												handleExportChat();
+											}}
+										>
+											<Icon name="download" size="sm" />
+											<span>{m.export_chat()}</span>
+										</ListItemButton>
 										{#if isViewingUnlockedLockedChat}
 											<ListItemButton
 												onclick={() => {
@@ -1389,6 +1416,15 @@ async function handleForgotPin() {
 								aria-label={m.stats_view()}
 							>
 								<Icon name="chart-bar" size="md" />
+							</IconButton>
+							<IconButton
+								theme="dark"
+								size="md"
+								onclick={handleExportChat}
+								title={m.export_chat()}
+								aria-label={m.export_chat()}
+							>
+								<Icon name="download" size="md" />
 							</IconButton>
 							{#if isViewingUnlockedLockedChat}
 								<IconButton

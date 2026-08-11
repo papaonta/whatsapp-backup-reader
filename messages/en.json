@@ -300,5 +300,7 @@
   "lock_biometric_failed": "Biometric unlock failed or was cancelled",
   "lock_waiting_for_biometric": "Waiting for {label}…",
   "on_this_day_title": "{yearsAgo} year{plural} ago today",
-  "on_this_day_dismiss": "Dismiss"
+  "on_this_day_dismiss": "Dismiss",
+  "export_chat": "Export chat",
+  "export_chat_success": "Chat exported"
 }

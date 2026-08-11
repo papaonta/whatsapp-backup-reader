@@ -265,5 +265,7 @@
   "persistence_remove_failed": "Fehler beim Entfernen der Unterhaltung",
   "close_notification": "Benachrichtigung schließen",
   "on_this_day_title": "Vor {yearsAgo} Jahren an diesem Tag",
-  "on_this_day_dismiss": "Schließen"
+  "on_this_day_dismiss": "Schließen",
+  "export_chat": "Chat exportieren",
+  "export_chat_success": "Chat exportiert"
 }
