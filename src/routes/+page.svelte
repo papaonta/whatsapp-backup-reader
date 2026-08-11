@@ -34,6 +34,7 @@ import ModalHeader from '$lib/components/ModalHeader.svelte';
 import OnThisDayBanner from '$lib/components/OnThisDayBanner.svelte';
 import ReselectFileModal from '$lib/components/ReselectFileModal.svelte';
 import RestoreSessionModal from '$lib/components/RestoreSessionModal.svelte';
+import SettingsModal from '$lib/components/SettingsModal.svelte';
 import Toast from '$lib/components/Toast.svelte';
 import { resolveUniqueChatTitle } from '$lib/helpers/chat-title';
 import { triggerDownload } from '$lib/helpers/download';
@@ -126,6 +127,7 @@ let showParticipants = $state(false);
 let participantStats = $state<Map<string, number> | null>(null);
 let scrollToMessageId = $state<string | null>(null);
 let showMergeChatsModal = $state(false);
+let showSettingsModal = $state(false);
 
 // Toast notification state
 let toastMessage = $state<string | null>(null);
@@ -1269,6 +1271,14 @@ async function handleForgotPin() {
 						<Icon name="moon" size="sm" class="text-gray-600 dark:text-gray-400" />
 					{/if}
 				</button>
+				<button
+					onclick={() => (showSettingsModal = true)}
+					class="p-1.5 rounded-full transition-colors cursor-pointer bg-gray-100/80 dark:bg-gray-800/80 hover:bg-gray-200 dark:hover:bg-gray-700 backdrop-blur-sm"
+					aria-label={m.settings_title()}
+					title={m.settings_title()}
+				>
+					<Icon name="settings" size="sm" class="text-gray-600 dark:text-gray-400" />
+				</button>
 			</div>
 			
 			<!-- Scrollable content area -->
@@ -1613,7 +1623,7 @@ async function handleForgotPin() {
 							{/if}
 						</div>
 
-						<!-- Theme toggle and language selector (always visible) -->
+						<!-- Theme toggle, language selector, and settings (always visible) -->
 						<LocaleSwitcher variant="header" />
 						<IconButton
 							theme="dark"
@@ -1627,6 +1637,15 @@ async function handleForgotPin() {
 							{:else}
 								<Icon name="moon" size="md" class="text-white/80" />
 							{/if}
+						</IconButton>
+						<IconButton
+							theme="dark"
+							size="md"
+							onclick={() => (showSettingsModal = true)}
+							aria-label={m.settings_title()}
+							title={m.settings_title()}
+						>
+							<Icon name="settings" size="md" />
 						</IconButton>
 					</div>
 				</div>
@@ -1660,7 +1679,7 @@ async function handleForgotPin() {
 				</div>
 			{:else}
 				<!-- No chat selected - simplified header -->
-				<div class="h-16 px-4 flex items-center bg-[var(--color-whatsapp-dark-green)] flex-shrink-0">
+				<div class="h-16 px-4 flex items-center justify-between bg-[var(--color-whatsapp-dark-green)] flex-shrink-0">
 					<!-- Sidebar toggle button -->
 					<IconButton
 						theme="dark"
@@ -1675,6 +1694,15 @@ async function handleForgotPin() {
 						{:else}
 							<Icon name="menu" size="md" />
 						{/if}
+					</IconButton>
+					<IconButton
+						theme="dark"
+						size="md"
+						onclick={() => (showSettingsModal = true)}
+						aria-label={m.settings_title()}
+						title={m.settings_title()}
+					>
+						<Icon name="settings" size="md" />
 					</IconButton>
 				</div>
 			{/if}
@@ -1989,6 +2017,11 @@ onSuccess={handleLockPinSuccess}
 onForgotPin={lockPinRequest.mode === 'unlock' ? handleForgotPin : undefined}
 onClose={closeLockPinModal}
 />
+{/if}
+
+<!-- Settings Modal -->
+{#if showSettingsModal}
+<SettingsModal onClose={() => (showSettingsModal = false)} />
 {/if}
 
 <!-- Toast Notification -->

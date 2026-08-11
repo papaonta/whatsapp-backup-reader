@@ -62,6 +62,8 @@ const HANDLE_PREFIX = 'whatsapp-file-handle-';
 const DONT_SHOW_KEY = 'whatsapp-dont-show-restore-modal';
 const LOCK_PIN_KEY = 'whatsapp-lock-settings';
 const LOCK_WEBAUTHN_KEY = 'whatsapp-lock-webauthn-credential';
+const ONBOARDING_COMPLETED_KEY = 'whatsapp-onboarding-completed';
+const APP_LOCK_SETTINGS_KEY = 'whatsapp-app-lock-settings';
 
 // Number of message IDs to store for validation (helps with iOS exports that lack chat title)
 const VALIDATION_MESSAGE_ID_COUNT = 5;
@@ -619,6 +621,70 @@ export async function clearWebAuthnCredentialId(): Promise<void> {
 		await del(LOCK_WEBAUTHN_KEY);
 	} catch (e) {
 		console.error('Failed to clear WebAuthn credential:', e);
+	}
+}
+
+/**
+ * Whether the first-launch onboarding flow has been completed
+ */
+export async function getOnboardingCompleted(): Promise<boolean> {
+	if (!browser) return false;
+	try {
+		return (await get<boolean>(ONBOARDING_COMPLETED_KEY)) || false;
+	} catch (e) {
+		console.error('Failed to get onboarding status:', e);
+		return false;
+	}
+}
+
+export async function setOnboardingCompleted(value: boolean): Promise<void> {
+	if (!browser) return;
+	try {
+		await set(ONBOARDING_COMPLETED_KEY, value);
+	} catch (e) {
+		console.error('Failed to set onboarding status:', e);
+	}
+}
+
+export interface AppLockSettings {
+	enabled: boolean;
+	// null = idle-timeout auto-lock disabled
+	autoLockIdleMinutes: number | null;
+	// Lock when the app window loses focus or is minimized
+	lockOnBlur: boolean;
+}
+
+const DEFAULT_APP_LOCK_SETTINGS: AppLockSettings = {
+	enabled: false,
+	autoLockIdleMinutes: 5,
+	lockOnBlur: true,
+};
+
+/**
+ * Get the app-wide lock settings (whether the whole app is gated behind
+ * the shared PIN, not just individual chats)
+ */
+export async function getAppLockSettings(): Promise<AppLockSettings> {
+	if (!browser) return DEFAULT_APP_LOCK_SETTINGS;
+	try {
+		return (
+			(await get<AppLockSettings>(APP_LOCK_SETTINGS_KEY)) ||
+			DEFAULT_APP_LOCK_SETTINGS
+		);
+	} catch (e) {
+		console.error('Failed to get app lock settings:', e);
+		return DEFAULT_APP_LOCK_SETTINGS;
+	}
+}
+
+export async function setAppLockSettings(
+	settings: AppLockSettings,
+): Promise<void> {
+	if (!browser) return;
+	try {
+		await set(APP_LOCK_SETTINGS_KEY, settings);
+	} catch (e) {
+		console.error('Failed to set app lock settings:', e);
 	}
 }
 
