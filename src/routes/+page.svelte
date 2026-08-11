@@ -876,6 +876,13 @@ async function handleRestoreChats(chatIds: string[]) {
 							});
 						}
 						addRemembered(persistedChat.chatTitle);
+					} else {
+						showToast(
+							m.persistence_reselect_mismatch({
+								chatTitle: persistedChat.chatTitle,
+							}),
+							'error',
+						);
 					}
 				}
 				continue;
@@ -891,7 +898,7 @@ async function handleRestoreChats(chatIds: string[]) {
 			}
 
 			// Parse and load the chat
-			await loadChatFromBuffer(
+			const { validationPassed } = await loadChatFromBuffer(
 				result.data.buffer,
 				result.data.name,
 				persistedChat,
@@ -899,6 +906,16 @@ async function handleRestoreChats(chatIds: string[]) {
 					? result.data.metadata.fileReference.filePath
 					: undefined,
 			);
+
+			if (!validationPassed) {
+				showToast(
+					m.persistence_reselect_mismatch({
+						chatTitle: persistedChat.chatTitle,
+					}),
+					'error',
+				);
+				continue;
+			}
 
 			// Store file reference for subsequent toggle operations
 			chatFileReferences.set(persistedChat.chatTitle, {
@@ -972,54 +989,53 @@ async function loadChatFromBuffer(
 			fileName,
 		);
 
-		// If restoring, validate the file and only apply metadata if valid
+		// If restoring, validate the file before touching any app state - a
+		// mismatched file must never be added/displayed as if it were correct
 		let validationPassed = true;
 		if (restoredMetadata) {
 			const validation = validateRestoredFile(chatData, restoredMetadata);
 			if (!validation.valid) {
 				console.warn('Restored file validation failed:', validation.reasons);
-				validationPassed = false;
-			} else {
-				// Restore bookmarks
-				if (restoredMetadata.bookmarks.length > 0) {
-					bookmarksState.importBookmarks({
-						version: 1,
-						exportedAt: restoredMetadata.savedAt,
-						bookmarks: restoredMetadata.bookmarks,
-					});
-				}
+				loadingChats = loadingChats.filter((lc) => lc.id !== loadingId);
+				return { validationPassed: false };
+			}
 
-				// Restore transcriptions
-				if (Object.keys(restoredMetadata.transcriptions).length > 0) {
-					setTranscriptionsForChat(restoredMetadata.transcriptions);
-				}
+			// Restore bookmarks
+			if (restoredMetadata.bookmarks.length > 0) {
+				bookmarksState.importBookmarks({
+					version: 1,
+					exportedAt: restoredMetadata.savedAt,
+					bookmarks: restoredMetadata.bookmarks,
+				});
+			}
 
-				// Restore settings
-				if (restoredMetadata.settings.language) {
-					languageByChat.set(
-						chatData.title,
-						restoredMetadata.settings.language,
-					);
-					languageByChat = new Map(languageByChat);
-				}
-				if (restoredMetadata.settings.autoLoadMedia !== undefined) {
-					autoLoadMediaByChat.set(
-						chatData.title,
-						restoredMetadata.settings.autoLoadMedia,
-					);
-					autoLoadMediaByChat = new Map(autoLoadMediaByChat);
-				}
-				if (restoredMetadata.settings.perspective !== undefined) {
-					perspectiveByChat.set(
-						chatData.title,
-						restoredMetadata.settings.perspective,
-					);
-					perspectiveByChat = new Map(perspectiveByChat);
-				}
-				if (restoredMetadata.settings.locked !== undefined) {
-					lockedByChat.set(chatData.title, restoredMetadata.settings.locked);
-					lockedByChat = new Map(lockedByChat);
-				}
+			// Restore transcriptions
+			if (Object.keys(restoredMetadata.transcriptions).length > 0) {
+				setTranscriptionsForChat(restoredMetadata.transcriptions);
+			}
+
+			// Restore settings
+			if (restoredMetadata.settings.language) {
+				languageByChat.set(chatData.title, restoredMetadata.settings.language);
+				languageByChat = new Map(languageByChat);
+			}
+			if (restoredMetadata.settings.autoLoadMedia !== undefined) {
+				autoLoadMediaByChat.set(
+					chatData.title,
+					restoredMetadata.settings.autoLoadMedia,
+				);
+				autoLoadMediaByChat = new Map(autoLoadMediaByChat);
+			}
+			if (restoredMetadata.settings.perspective !== undefined) {
+				perspectiveByChat.set(
+					chatData.title,
+					restoredMetadata.settings.perspective,
+				);
+				perspectiveByChat = new Map(perspectiveByChat);
+			}
+			if (restoredMetadata.settings.locked !== undefined) {
+				lockedByChat.set(chatData.title, restoredMetadata.settings.locked);
+				lockedByChat = new Map(lockedByChat);
 			}
 		}
 
@@ -1090,9 +1106,15 @@ async function rememberChat(chatTitle: string, silent = false) {
 
 async function forgetChat(chatTitle: string) {
 	try {
-		const persistedChat = await findPersistedChatByTitle(chatTitle);
-		if (persistedChat) {
-			await removePersistedChat(persistedChat.id);
+		// Remove every persisted record under this title, not just one - older
+		// duplicates can exist from before same-titled-but-different chats got
+		// disambiguated at import time, and a single stale leftover would keep
+		// resurfacing in the restore prompt after "forgetting" it once
+		const allPersisted = await getPersistedChats();
+		for (const record of allPersisted) {
+			if (record.chatTitle === chatTitle) {
+				await removePersistedChat(record.id);
+			}
 		}
 		removeRemembered(chatTitle);
 		showToast(m.persistence_conversation_removed(), 'success');
