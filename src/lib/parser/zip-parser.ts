@@ -6,7 +6,12 @@
  */
 
 import JSZip from 'jszip';
-import { type ChatMessage, type ParsedChat, parseChat } from './chat-parser';
+import {
+	type ChatMessage,
+	GENERIC_CHAT_TITLE_FALLBACK,
+	type ParsedChat,
+	parseChat,
+} from './chat-parser';
 import { type ContactInfo, parseVcf } from './vcf-parser';
 
 export interface MediaFile {
@@ -142,6 +147,7 @@ function looksLikeChatContent(content: string): boolean {
 export async function parseZipFile(
 	file: File | ArrayBuffer,
 	onProgress?: (progress: ParseProgress) => void,
+	originalFileName?: string,
 ): Promise<ParsedZipChat> {
 	const zip = new JSZip();
 
@@ -347,12 +353,15 @@ export async function parseZipFile(
 			// Strategy 2: Extract from ZIP filename
 			// e.g., "WhatsApp.Chat.-.+20.109.870.8253.zip" or "Chat with John.zip"
 			let zipBaseName: string | null = null;
-			if (file instanceof File) {
-				zipBaseName = file.name.replace(/\.zip$/i, '');
+			if (originalFileName) {
+				zipBaseName = originalFileName.replace(/\.zip$/i, '');
 				// Clean up common patterns from iOS/Android exports
 				zipBaseName = zipBaseName
 					.replace(/^WhatsApp\.Chat\.-\./, '') // "WhatsApp.Chat.-." prefix
-					.replace(/^WhatsApp[-_\s]+(Chat|Conversa|Plausch|チャット|聊天)/i, '') // "WhatsApp Chat" in various languages
+					.replace(
+						/^WhatsApp[-_\s]+(Chat|Conversa|Plausch|チャット|聊天)(?:[-_\s]+with)?[-_\s]*/i,
+						'',
+					) // "WhatsApp Chat" or "WhatsApp Chat with" in various languages
 					.replace(/[-_\s]+(Chat|Conversa|Plausch|チャット|聊天)[-_\s]+/gi, ' ') // " Chat " or " Conversa " in the middle
 					.replace(
 						/^(Chat|Conversa|Plausch|チャット|聊天)[-_\s]+with[-_\s]+/i,
@@ -400,7 +409,7 @@ export async function parseZipFile(
 				titleHint = contentHint;
 			} else {
 				// Fallback: use a generic but clear name instead of "_chat"
-				titleHint = 'iOS Chat Export';
+				titleHint = GENERIC_CHAT_TITLE_FALLBACK;
 			}
 
 			console.log(

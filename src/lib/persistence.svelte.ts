@@ -170,9 +170,13 @@ export async function savePersistedChat(
 ): Promise<string> {
 	if (!browser) throw new Error('Persistence only available in browser');
 
-	// Remove any existing entry for this chat to prevent duplicates
+	// Remove any existing entry for this chat to prevent duplicates - but only
+	// once confirmed it's genuinely the same chat (not just a same-titled
+	// different one, which would otherwise silently destroy its data). This is
+	// a defense-in-depth backstop; the primary guard is resolveUniqueChatTitle
+	// at import time in +page.svelte.
 	const existing = await findPersistedChatByTitle(chat.title);
-	if (existing) {
+	if (existing && validateRestoredFile(chat, existing).valid) {
 		await removePersistedChat(existing.id);
 	}
 

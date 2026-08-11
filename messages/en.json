@@ -311,5 +311,7 @@
   "merge_chats_no_other_chats": "No other chats to merge with. Import another export of this conversation first.",
   "merge_chats_button": "Merge",
   "merge_chats_cancel": "Cancel",
-  "merge_chats_success": "Merged {count} chats: {newCount} new message{newPlural}, {duplicateCount} duplicate{duplicatePlural} skipped"
+  "merge_chats_success": "Merged {count} chats: {newCount} new message{newPlural}, {duplicateCount} duplicate{duplicatePlural} skipped",
+  "chat_not_saved": "Not saved",
+  "persistence_reselect_browse_hint": "Tip: drag and drop the file above instead of using Browse, so it's remembered without asking again next time."
 }

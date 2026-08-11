@@ -38,6 +38,15 @@ export interface ParsedChat {
 	mediaCount: number;
 }
 
+// Generic fallback title used by zip-parser.ts when it can't derive a
+// better name for an iOS export (no descriptive parent folder, zip
+// filename, or in-content group-subject hint)
+export const GENERIC_CHAT_TITLE_FALLBACK = 'iOS Chat Export';
+const GENERIC_TITLES = [
+	'whatsapp chat',
+	GENERIC_CHAT_TITLE_FALLBACK.toLowerCase(),
+];
+
 // Media indicators used by WhatsApp
 const MEDIA_INDICATORS = [
 	'<Media omitted>',
@@ -628,7 +637,7 @@ export function parseChat(
 		.trim();
 
 	// If title is still generic, use participants
-	if (title.toLowerCase() === 'whatsapp chat' && participants.length > 0) {
+	if (GENERIC_TITLES.includes(title.toLowerCase()) && participants.length > 0) {
 		title = participants.slice(0, 3).join(', ');
 		if (participants.length > 3) {
 			title += ` +${participants.length - 3}`;

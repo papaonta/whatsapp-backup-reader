@@ -1,5 +1,6 @@
 <script lang="ts">
 import { openElectronFile } from '$lib/helpers/file-picker';
+import { isElectronApp } from '$lib/helpers/responsive';
 import * as m from '$lib/paraglide/messages';
 import type { PersistedChatMetadata } from '$lib/persistence.svelte';
 import Button from './Button.svelte';
@@ -189,6 +190,12 @@ function handleDropZoneClick() {
 							<span>{m.persistence_browse_files()}</span>
 						</span>
 					</label>
+
+					{#if !isElectronApp()}
+						<p class="text-xs text-gray-400 dark:text-gray-500 max-w-xs">
+							{m.persistence_reselect_browse_hint()}
+						</p>
+					{/if}
 				</div>
 			</div>
 

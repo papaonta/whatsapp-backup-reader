@@ -35,6 +35,7 @@ import OnThisDayBanner from '$lib/components/OnThisDayBanner.svelte';
 import ReselectFileModal from '$lib/components/ReselectFileModal.svelte';
 import RestoreSessionModal from '$lib/components/RestoreSessionModal.svelte';
 import Toast from '$lib/components/Toast.svelte';
+import { resolveUniqueChatTitle } from '$lib/helpers/chat-title';
 import { triggerDownload } from '$lib/helpers/download';
 import { buildChatExportHtml } from '$lib/helpers/export-chat';
 import {
@@ -443,10 +444,17 @@ async function handleFilesSelected(
 				const chatData: ChatData = await parseZipFile(
 					buffer,
 					makeProgressCallback(loadingId),
+					file.name,
 				);
 
 				// Remove loading placeholder and add actual chat
 				loadingChats = loadingChats.filter((lc) => lc.id !== loadingId);
+
+				// Guard against a different chat coincidentally deriving the same
+				// title as one already open - persistence is keyed by title, so a
+				// collision there would silently overwrite the other chat's data
+				chatData.title = resolveUniqueChatTitle(chatData, appState.chats);
+
 				appState.addChat(chatData);
 
 				// Store file reference for persistence
@@ -961,6 +969,7 @@ async function loadChatFromBuffer(
 		const chatData: ChatData = await parseZipFile(
 			buffer,
 			makeProgressCallback(loadingId),
+			fileName,
 		);
 
 		// If restoring, validate the file and only apply metadata if valid

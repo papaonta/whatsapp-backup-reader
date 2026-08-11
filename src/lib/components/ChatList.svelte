@@ -253,6 +253,12 @@ function getLastMessage(chat: ChatData): string {
 									• {chat.mediaCount} {m.count_media()}
 								</span>
 							{/if}
+							{#if !isRemembered(chat.title)}
+								<span class="text-xs text-gray-400 dark:text-gray-500 flex items-center gap-1">
+									• <Icon name="bookmark-outline" size="xs" />
+									{m.chat_not_saved()}
+								</span>
+							{/if}
 						</div>
 					</div>
 
