@@ -6,6 +6,7 @@ export {
 	getChatStats,
 	groupMessagesByDate,
 	parseChat,
+	toLocalDateKey,
 } from './chat-parser';
 export type { ContactInfo } from './vcf-parser';
 export { formatPhoneNumber, isPhoneNumber, parseVcf } from './vcf-parser';

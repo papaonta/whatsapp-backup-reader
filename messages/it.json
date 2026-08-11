@@ -263,5 +263,7 @@
   "persistence_save_failed": "Impossibile salvare la conversazione",
   "persistence_restore_failed": "Impossibile ripristinare la conversazione",
   "persistence_remove_failed": "Impossibile rimuovere la conversazione",
-  "close_notification": "Chiudi notifica"
+  "close_notification": "Chiudi notifica",
+  "on_this_day_title": "{yearsAgo} anni fa, in questo stesso giorno",
+  "on_this_day_dismiss": "Ignora"
 }

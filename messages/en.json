@@ -298,5 +298,7 @@
   "lock_biometric_offer_enable": "Enable",
   "lock_biometric_offer_skip": "Skip",
   "lock_biometric_failed": "Biometric unlock failed or was cancelled",
-  "lock_waiting_for_biometric": "Waiting for {label}…"
+  "lock_waiting_for_biometric": "Waiting for {label}…",
+  "on_this_day_title": "{yearsAgo} year{plural} ago today",
+  "on_this_day_dismiss": "Dismiss"
 }

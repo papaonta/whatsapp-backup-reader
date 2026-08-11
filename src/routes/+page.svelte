@@ -30,6 +30,7 @@ import MediaGallery from '$lib/components/MediaGallery.svelte';
 import Modal from '$lib/components/Modal.svelte';
 import ModalContent from '$lib/components/ModalContent.svelte';
 import ModalHeader from '$lib/components/ModalHeader.svelte';
+import OnThisDayBanner from '$lib/components/OnThisDayBanner.svelte';
 import ReselectFileModal from '$lib/components/ReselectFileModal.svelte';
 import RestoreSessionModal from '$lib/components/RestoreSessionModal.svelte';
 import Toast from '$lib/components/Toast.svelte';
@@ -39,12 +40,21 @@ import {
 } from '$lib/helpers/file-picker';
 import { sanitizeFilename } from '$lib/helpers/format';
 import {
+	dismissOnThisDay,
+	findOnThisDayMatch,
+	isOnThisDayDismissed,
+} from '$lib/helpers/on-this-day';
+import {
 	isElectronMac as checkIsElectronMac,
 	isElectronApp,
 	isMobileViewport,
 } from '$lib/helpers/responsive';
 import * as m from '$lib/paraglide/messages';
-import { parseZipFile, readFileAsArrayBuffer } from '$lib/parser';
+import {
+	parseZipFile,
+	readFileAsArrayBuffer,
+	toLocalDateKey,
+} from '$lib/parser';
 import {
 	clearLockPin,
 	findPersistedChatByTitle,
@@ -603,6 +613,38 @@ const currentUser = $derived.by(() => {
 	// Otherwise, no perspective (all messages on left)
 	return undefined;
 });
+
+// "On This Day" - find messages from the same month+day in a past year
+const todayDateKey = toLocalDateKey(new Date());
+const onThisDayMatch = $derived.by(() => {
+	if (!appState.selectedChat) return null;
+	return findOnThisDayMatch(appState.selectedChat.messages);
+});
+let onThisDayDismissed = $state(true);
+$effect(() => {
+	if (!appState.selectedChat || !onThisDayMatch) {
+		onThisDayDismissed = true;
+		return;
+	}
+	onThisDayDismissed = isOnThisDayDismissed(
+		appState.selectedChat.title,
+		todayDateKey,
+	);
+});
+
+function handleDismissOnThisDay() {
+	if (!appState.selectedChat) return;
+	dismissOnThisDay(appState.selectedChat.title, todayDateKey);
+	onThisDayDismissed = true;
+}
+
+async function handleViewOnThisDay() {
+	if (!onThisDayMatch) return;
+	const messageId = onThisDayMatch.messages[0].id;
+	scrollToMessageId = null;
+	await tick();
+	scrollToMessageId = messageId;
+}
 
 // Check for persisted chats on app load (one-time)
 let persistenceChecked = false;
@@ -1557,6 +1599,15 @@ async function handleForgotPin() {
 							{/if}
 						</div>
 					</div>
+
+					<!-- On This Day banner -->
+					{#if onThisDayMatch && !onThisDayDismissed}
+						<OnThisDayBanner
+							match={onThisDayMatch}
+							onView={handleViewOnThisDay}
+							onDismiss={handleDismissOnThisDay}
+						/>
+					{/if}
 
 					<!-- Chat view -->
 					<ChatView

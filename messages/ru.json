@@ -263,5 +263,7 @@
   "persistence_save_failed": "Не удалось сохранить разговор",
   "persistence_restore_failed": "Не удалось восстановить разговор",
   "persistence_remove_failed": "Не удалось удалить разговор",
-  "close_notification": "Закрыть уведомление"
+  "close_notification": "Закрыть уведомление",
+  "on_this_day_title": "{yearsAgo} лет назад в этот день",
+  "on_this_day_dismiss": "Скрыть"
 }

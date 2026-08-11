@@ -263,5 +263,7 @@
   "persistence_save_failed": "会話の保存に失敗しました",
   "persistence_restore_failed": "会話の復元に失敗しました",
   "persistence_remove_failed": "会話の削除に失敗しました",
-  "close_notification": "通知を閉じる"
+  "close_notification": "通知を閉じる",
+  "on_this_day_title": "{yearsAgo}年前の今日",
+  "on_this_day_dismiss": "閉じる"
 }
