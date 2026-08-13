@@ -83,14 +83,22 @@ function handleFileInput(e: Event) {
 	}
 }
 
-function openBrowse() {
-	// In Electron, use the native dialog to capture the absolute file path
+async function openBrowse() {
+	// In Electron, use the native dialog to capture the absolute file path,
+	// then fetch the real bytes separately - this modal re-selects a chat's
+	// original zip for the legacy in-memory pipeline (not a fresh import), so
+	// it still needs a real content-bearing File.
 	if (window.electronAPI) {
-		openElectronFile().then((result) => {
-			if (result?.file.name.toLowerCase().endsWith('.zip')) {
-				onFileSelected(result.file, result.path);
-			}
+		const result = await openElectronFile();
+		if (!result || !result.name.toLowerCase().endsWith('.zip')) return;
+
+		const readResult = await window.electronAPI.readFileFromPath(result.path);
+		if (!readResult.success || !readResult.buffer) return;
+
+		const file = new File([readResult.buffer], result.name, {
+			type: 'application/zip',
 		});
+		onFileSelected(file, result.path);
 		return;
 	}
 	// Deliberately use the plain <input type="file"> dialog instead of

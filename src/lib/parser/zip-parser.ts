@@ -25,8 +25,11 @@ export interface MediaFile {
 	messageSender?: string;
 	blob?: Blob;
 	url?: string;
-	// For lazy loading
+	// For lazy loading from an in-memory ZIP
 	_zipEntry?: JSZip.JSZipObject;
+	// For lazy loading from an Electron-extracted folder on disk (see
+	// electron/lib/extract-zip.cjs) - mutually exclusive with _zipEntry
+	_extractionId?: string;
 	_loaded?: boolean;
 }
 
@@ -63,6 +66,11 @@ export interface ParsedZipChat extends ParsedChat {
 	contacts: Map<string, ContactInfo>;
 	// Reference to zip for lazy loading
 	_zip?: JSZip;
+	// Set instead of _zip when this chat was parsed from an Electron-extracted
+	// folder on disk (see electron/lib/extract-zip.cjs) rather than an
+	// in-memory ZIP.
+	extractionDir?: string;
+	extractionId?: string;
 	// Pre-computed message index for bookmark navigation (messageId -> flatIndex)
 	// Built by index-worker after import for efficient O(1) lookups
 	messageIndex?: Map<string, number>;
@@ -141,46 +149,139 @@ function looksLikeChatContent(content: string): boolean {
 }
 
 /**
- * Parse a WhatsApp ZIP export file
- * Uses lazy loading for media files to handle large backups efficiently
+ * Derives a display title hint for a chat, un-mangling iOS's generic
+ * "_chat.txt" filename via (in order of preference) the containing folder
+ * name, the original ZIP's filename, or a group-subject line inside the
+ * chat content itself. Non-generic filenames are returned as-is.
  */
-export async function parseZipFile(
-	file: File | ArrayBuffer,
-	onProgress?: (progress: ParseProgress) => void,
-	originalFileName?: string,
-): Promise<ParsedZipChat> {
-	const zip = new JSZip();
+export function deriveChatTitle(params: {
+	chatContent: string;
+	chatFilename: string;
+	chatEntryPath: string | null;
+	originalFileName?: string;
+}): string {
+	const { chatContent, chatFilename, chatEntryPath, originalFileName } = params;
+	const lower = chatFilename.toLowerCase();
+	const isIosGenericChatName =
+		lower === '_chat.txt' || lower.startsWith('_chat');
 
-	onProgress?.({ stage: 'extracting', progress: 0 });
+	if (!isIosGenericChatName) return chatFilename;
 
-	// Load ZIP (JSZip doesn't support progress callback for loadAsync)
-	const contents = await zip.loadAsync(file);
+	// iOS exports always use "_chat.txt" - we need to extract a better name
+	// Try multiple strategies in order of preference:
 
-	onProgress?.({ stage: 'extracting', progress: 30 });
+	// Strategy 1: Extract from parent folder name
+	// e.g., "WhatsApp/Conversa do WhatsApp com GTR administração/_chat.txt"
+	const parts = (chatEntryPath ?? '')
+		.split('/')
+		.map((p) => p.trim())
+		.filter(Boolean);
+	const parentFolder = parts.length >= 2 ? parts[parts.length - 2] : null;
 
+	// Strategy 2: Extract from ZIP filename
+	// e.g., "WhatsApp.Chat.-.+20.109.870.8253.zip" or "Chat with John.zip"
+	let zipBaseName: string | null = null;
+	if (originalFileName) {
+		zipBaseName = originalFileName.replace(/\.zip$/i, '');
+		// Clean up common patterns from iOS/Android exports
+		zipBaseName = zipBaseName
+			.replace(/^WhatsApp\.Chat\.-\./, '') // "WhatsApp.Chat.-." prefix
+			.replace(
+				/^WhatsApp[-_\s]+(Chat|Conversa|Plausch|チャット|聊天)(?:[-_\s]+with)?[-_\s]*/i,
+				'',
+			) // "WhatsApp Chat" or "WhatsApp Chat with" in various languages
+			.replace(/[-_\s]+(Chat|Conversa|Plausch|チャット|聊天)[-_\s]+/gi, ' ') // " Chat " or " Conversa " in the middle
+			.replace(/^(Chat|Conversa|Plausch|チャット|聊天)[-_\s]+with[-_\s]+/i, '') // "Chat with" prefix
+			.replace(/\+/g, ' ') // Replace + with space
+			.trim();
+	}
+
+	// Strategy 3: Parse the first few lines of the chat for contact/group info
+	// Some iOS exports include the chat name in the first system message
+	let contentHint: string | null = null;
+	const firstLines = chatContent.split(/\r?\n/).slice(0, 5);
+	for (const line of firstLines) {
+		// Look for patterns like "Messages to this chat and calls are now secured with end-to-end encryption"
+		// or group subject changes
+		if (line.includes('group subject') || line.includes('assunto do grupo')) {
+			const match = line.match(
+				/(?:group subject|assunto do grupo)[:\s]+["']?([^"'\n]+)["']?/i,
+			);
+			if (match?.[1]) {
+				contentHint = match[1].trim();
+				break;
+			}
+		}
+	}
+
+	// Choose the best available name
+	let titleHint: string;
+	if (parentFolder && !parentFolder.toLowerCase().includes('whatsapp')) {
+		// Parent folder is the best if it's not just "WhatsApp" itself
+		titleHint = parentFolder
+			.replace(
+				/^(WhatsApp|Conversa do WhatsApp com|Chat with|Plausch mit)\s+/i,
+				'',
+			)
+			.trim();
+	} else if (zipBaseName && zipBaseName.length > 0) {
+		// ZIP filename is second best
+		titleHint = zipBaseName;
+	} else if (contentHint) {
+		// Content extraction is third best
+		titleHint = contentHint;
+	} else {
+		// Fallback: use a generic but clear name instead of "_chat"
+		titleHint = GENERIC_CHAT_TITLE_FALLBACK;
+	}
+
+	console.log(
+		`iOS export detected. Original: "${chatFilename}", Derived title: "${titleHint}"`,
+	);
+
+	return titleHint;
+}
+
+interface ClassifiableEntry {
+	path: string;
+	size: number;
+}
+
+interface ClassificationResult {
+	chatContent: string;
+	chatFilename: string;
+	chatEntryPath: string | null;
+	vcfContents: Array<{ path: string; content: string }>;
+	mediaFiles: Array<Pick<MediaFile, 'name' | 'path' | 'type' | 'size'>>;
+	allFiles: Array<{ path: string; name: string }>;
+}
+
+/**
+ * Classifies a flat list of ZIP/extraction entries into the chat text file,
+ * VCF contact files, and media files - the same heuristics regardless of
+ * whether entries live inside an in-memory JSZip instance or on disk (an
+ * Electron-extracted folder), so this logic only needs to be maintained once.
+ * `readText` is called for the chat-candidate and VCF entries only (media
+ * entries are cataloged, never read here).
+ */
+async function classifyEntries(
+	entries: ClassifiableEntry[],
+	readText: (entryPath: string) => Promise<string>,
+	onSubProgress?: (fraction: number) => void,
+): Promise<ClassificationResult> {
 	let chatContent = '';
 	let chatFilename = 'WhatsApp Chat';
 	let chatEntryPath: string | null = null;
-	const mediaFiles: MediaFile[] = [];
-	const contacts = new Map<string, ContactInfo>();
-	const vcfEntries: Array<{ filename: string; entry: JSZip.JSZipObject }> = [];
-
-	// Get all file entries for progress tracking
-	const fileEntries = Object.entries(contents.files).filter(
-		([, entry]) => !entry.dir,
-	);
-	const totalFiles = fileEntries.length;
-	let processedFiles = 0;
-
-	// Track all files for debugging
+	const mediaFiles: ClassificationResult['mediaFiles'] = [];
+	const vcfContents: ClassificationResult['vcfContents'] = [];
 	const allFiles: Array<{ path: string; name: string }> = [];
 
-	// First pass: find the chat text file, catalog VCF files, and catalog media files
-	for (const [path, zipEntry] of fileEntries) {
-		const filename = path.split('/').pop() || path;
+	const total = entries.length;
+	let processed = 0;
 
-		// Track for debugging
-		allFiles.push({ path, name: filename });
+	for (const entry of entries) {
+		const filename = entry.path.split('/').pop() || entry.path;
+		allFiles.push({ path: entry.path, name: filename });
 
 		// Remove any potential BOM (Byte Order Mark) from filename for comparison
 		const cleanFilename = filename.replace(/^\uFEFF/, '');
@@ -200,115 +301,142 @@ export async function parseZipFile(
 
 		if (isTxtFile && isNotHidden) {
 			// This is likely the chat file - load it immediately (it's small)
-			chatContent = await zipEntry.async('string');
+			chatContent = await readText(entry.path);
 			chatFilename = cleanFilename;
-			chatEntryPath = path;
-			console.log(`Found chat file: ${cleanFilename} (${path})`);
+			chatEntryPath = entry.path;
+			console.log(`Found chat file: ${cleanFilename} (${entry.path})`);
 		} else if (isChatLikeFile && isNotHidden && !chatContent) {
 			// Try loading files that might be chat files even without .txt extension
-			console.log(`Trying potential chat file: ${cleanFilename} (${path})`);
-			const content = await zipEntry.async('string');
+			console.log(
+				`Trying potential chat file: ${cleanFilename} (${entry.path})`,
+			);
+			const content = await readText(entry.path);
 			// Check if it looks like a chat file (contains timestamp patterns)
 			if (looksLikeChatContent(content)) {
 				chatContent = content;
 				chatFilename = cleanFilename;
-				chatEntryPath = path;
+				chatEntryPath = entry.path;
 				console.log(
 					`Detected chat file without .txt extension: ${cleanFilename}`,
 				);
 			}
 		} else if (lowerFilename.endsWith('.vcf')) {
-			// This is a vCard file - save for parsing
-			vcfEntries.push({ filename: cleanFilename, entry: zipEntry });
+			// This is a vCard file - read it now for later parsing
+			try {
+				const content = await readText(entry.path);
+				vcfContents.push({ path: entry.path, content });
+			} catch (e) {
+				console.warn(`Failed to read VCF file: ${entry.path}`, e);
+			}
 		} else {
 			// This is a media file - catalog it but don't load yet
 			const mediaType = getMediaType(cleanFilename);
-
 			if (mediaType !== 'other' || isNotHidden) {
-				// Access uncompressed size from JSZip internal structure with fallback
-				let size = 0;
-				try {
-					// biome-ignore lint/suspicious/noExplicitAny: JSZip doesn't expose _data in its type definitions
-					const zipData = (zipEntry as any)._data;
-					if (zipData && typeof zipData.uncompressedSize === 'number') {
-						size = zipData.uncompressedSize;
-					}
-				} catch (err) {
-					// Fallback to 0 if _data is not available or errors
-					const errorMessage = err instanceof Error ? err.message : String(err);
-					const errorStack = err instanceof Error ? err.stack : undefined;
-					console.warn(
-						`Could not read size for ${cleanFilename}: ${errorMessage}`,
-						{
-							error: err,
-							stack: errorStack,
-							path,
-						},
-					);
-				}
-
 				mediaFiles.push({
 					name: cleanFilename,
-					path,
+					path: entry.path,
 					type: mediaType,
-					size,
-					_zipEntry: zipEntry,
-					_loaded: false,
+					size: entry.size,
 				});
 			}
 		}
 
-		processedFiles++;
-		// Report progress: 30-70% for file enumeration
-		const enumerationProgress = 30 + (processedFiles / totalFiles) * 40;
-		onProgress?.({ stage: 'extracting', progress: enumerationProgress });
+		processed++;
+		onSubProgress?.(processed / total);
 	}
 
-	// Parse VCF files to extract contact information
-	for (let i = 0; i < vcfEntries.length; i++) {
-		const { entry } = vcfEntries[i];
-		try {
-			const vcfContent = await entry.async('string');
-			const contactInfo = parseVcf(vcfContent);
-			if (contactInfo) {
-				// Store by lowercase name for case-insensitive lookup
-				contacts.set(contactInfo.name.toLowerCase(), contactInfo);
-			}
-		} catch (e) {
-			// Ignore VCF parsing errors - file might be corrupted
-			console.warn(`Failed to parse VCF file: ${entry.name}`, e);
-		}
-		// Report progress: 70-80% for VCF parsing
-		const vcfProgress = 70 + ((i + 1) / vcfEntries.length) * 10;
-		onProgress?.({ stage: 'extracting', progress: vcfProgress });
+	return {
+		chatContent,
+		chatFilename,
+		chatEntryPath,
+		vcfContents,
+		mediaFiles,
+		allFiles,
+	};
+}
+
+function buildNoChatFileError(
+	allFiles: Array<{ path: string; name: string }>,
+): Error {
+	// Provide detailed error message with debugging information
+	console.error('No chat file found in ZIP archive');
+	console.error('Files found in ZIP:');
+	for (const file of allFiles) {
+		console.error(`  - ${file.path} (${file.name})`);
 	}
 
+	// Create a user-friendly error message
+	const fileList = allFiles.map((f) => `  • ${f.name}`).join('\n');
+
+	return new Error(
+		`No WhatsApp chat file found in ZIP archive.\n\n` +
+			`Expected: A .txt file containing chat history (e.g., "WhatsApp Chat with Contact.txt")\n\n` +
+			`Files found in archive (${allFiles.length} total):\n${fileList}\n\n` +
+			`Please ensure you exported the chat correctly:\n` +
+			`1. Open WhatsApp\n` +
+			`2. Open the chat you want to export\n` +
+			`3. Tap the contact/group name at the top\n` +
+			`4. Scroll down and tap "Export Chat"\n` +
+			`5. Choose "Include Media" or "Without Media"\n` +
+			`6. Save the ZIP file and try again`,
+	);
+}
+
+function buildEmptyChatFileError(chatFilename: string): Error {
+	return new Error(
+		`Chat file is empty: ${chatFilename}\n\n` +
+			`The file exists but contains no content. Please check if the export was completed correctly.`,
+	);
+}
+
+function buildChatParseFailedError(
+	chatFilename: string,
+	error: unknown,
+): Error {
+	console.error('Failed to parse chat file:', error);
+	return new Error(
+		`Failed to parse chat file: ${chatFilename}\n\n` +
+			`Error: ${error instanceof Error ? error.message : String(error)}\n\n` +
+			`The file format may not be supported or the file may be corrupted.`,
+	);
+}
+
+function buildNoMessagesError(
+	chatFilename: string,
+	firstLines: string[],
+): Error {
+	console.warn('No messages were parsed from the chat file. First few lines:');
+	for (let i = 0; i < Math.min(10, firstLines.length); i++) {
+		console.warn(`  Line ${i + 1}: ${firstLines[i]}`);
+	}
+
+	return new Error(
+		`No messages found in chat file: ${chatFilename}\n\n` +
+			`The file was loaded but no messages could be parsed. This may indicate:\n` +
+			`1. The date format is not recognized\n` +
+			`2. The file structure is different from expected\n` +
+			`3. The file may be corrupted\n\n` +
+			`First line of file: "${firstLines[0]}"\n\n` +
+			`Please report this issue with information about your WhatsApp version and phone model.`,
+	);
+}
+
+/**
+ * Validates and parses classified chat text into messages - shared by both
+ * the in-memory JSZip pipeline and the Electron-extracted pipeline, since
+ * everything from here on is identical regardless of where the bytes came
+ * from.
+ */
+async function parseClassifiedChat(
+	chatContent: string,
+	chatFilename: string,
+	chatEntryPath: string | null,
+	originalFileName: string | undefined,
+	allFiles: Array<{ path: string; name: string }>,
+): Promise<ParsedChat> {
 	if (!chatContent) {
-		// Provide detailed error message with debugging information
-		console.error('No chat file found in ZIP archive');
-		console.error('Files found in ZIP:');
-		for (const file of allFiles) {
-			console.error(`  - ${file.path} (${file.name})`);
-		}
-
-		// Create a user-friendly error message
-		const fileList = allFiles.map((f) => `  • ${f.name}`).join('\n');
-
-		throw new Error(
-			`No WhatsApp chat file found in ZIP archive.\n\n` +
-				`Expected: A .txt file containing chat history (e.g., "WhatsApp Chat with Contact.txt")\n\n` +
-				`Files found in archive (${allFiles.length} total):\n${fileList}\n\n` +
-				`Please ensure you exported the chat correctly:\n` +
-				`1. Open WhatsApp\n` +
-				`2. Open the chat you want to export\n` +
-				`3. Tap the contact/group name at the top\n` +
-				`4. Scroll down and tap "Export Chat"\n` +
-				`5. Choose "Include Media" or "Without Media"\n` +
-				`6. Save the ZIP file and try again`,
-		);
+		throw buildNoChatFileError(allFiles);
 	}
-
-	onProgress?.({ stage: 'parsing', progress: 0 });
 
 	// Log the first few lines of the chat file for debugging
 	const firstLines = chatContent.split(/\r?\n/).slice(0, 5);
@@ -324,131 +452,115 @@ export async function parseZipFile(
 
 	// Check if the content is potentially parseable
 	if (!chatContent.trim()) {
-		throw new Error(
-			`Chat file is empty: ${chatFilename}\n\n` +
-				`The file exists but contains no content. Please check if the export was completed correctly.`,
-		);
+		throw buildEmptyChatFileError(chatFilename);
 	}
 
 	// Parse the chat content
 	let parsedChat: ParsedChat;
 	try {
-		const lower = chatFilename.toLowerCase();
-		const isIosGenericChatName =
-			lower === '_chat.txt' || lower.startsWith('_chat');
-
-		let titleHint = chatFilename;
-		if (isIosGenericChatName) {
-			// iOS exports always use "_chat.txt" - we need to extract a better name
-			// Try multiple strategies in order of preference:
-
-			// Strategy 1: Extract from parent folder name
-			// e.g., "WhatsApp/Conversa do WhatsApp com GTR administração/_chat.txt"
-			const parts = (chatEntryPath ?? '')
-				.split('/')
-				.map((p) => p.trim())
-				.filter(Boolean);
-			const parentFolder = parts.length >= 2 ? parts[parts.length - 2] : null;
-
-			// Strategy 2: Extract from ZIP filename
-			// e.g., "WhatsApp.Chat.-.+20.109.870.8253.zip" or "Chat with John.zip"
-			let zipBaseName: string | null = null;
-			if (originalFileName) {
-				zipBaseName = originalFileName.replace(/\.zip$/i, '');
-				// Clean up common patterns from iOS/Android exports
-				zipBaseName = zipBaseName
-					.replace(/^WhatsApp\.Chat\.-\./, '') // "WhatsApp.Chat.-." prefix
-					.replace(
-						/^WhatsApp[-_\s]+(Chat|Conversa|Plausch|チャット|聊天)(?:[-_\s]+with)?[-_\s]*/i,
-						'',
-					) // "WhatsApp Chat" or "WhatsApp Chat with" in various languages
-					.replace(/[-_\s]+(Chat|Conversa|Plausch|チャット|聊天)[-_\s]+/gi, ' ') // " Chat " or " Conversa " in the middle
-					.replace(
-						/^(Chat|Conversa|Plausch|チャット|聊天)[-_\s]+with[-_\s]+/i,
-						'',
-					) // "Chat with" prefix
-					.replace(/\+/g, ' ') // Replace + with space
-					.trim();
-			}
-
-			// Strategy 3: Parse the first few lines of the chat for contact/group info
-			// Some iOS exports include the chat name in the first system message
-			let contentHint: string | null = null;
-			const firstLines = chatContent.split(/\r?\n/).slice(0, 5);
-			for (const line of firstLines) {
-				// Look for patterns like "Messages to this chat and calls are now secured with end-to-end encryption"
-				// or group subject changes
-				if (
-					line.includes('group subject') ||
-					line.includes('assunto do grupo')
-				) {
-					const match = line.match(
-						/(?:group subject|assunto do grupo)[:\s]+["']?([^"'\n]+)["']?/i,
-					);
-					if (match?.[1]) {
-						contentHint = match[1].trim();
-						break;
-					}
-				}
-			}
-
-			// Choose the best available name
-			if (parentFolder && !parentFolder.toLowerCase().includes('whatsapp')) {
-				// Parent folder is the best if it's not just "WhatsApp" itself
-				titleHint = parentFolder
-					.replace(
-						/^(WhatsApp|Conversa do WhatsApp com|Chat with|Plausch mit)\s+/i,
-						'',
-					)
-					.trim();
-			} else if (zipBaseName && zipBaseName.length > 0) {
-				// ZIP filename is second best
-				titleHint = zipBaseName;
-			} else if (contentHint) {
-				// Content extraction is third best
-				titleHint = contentHint;
-			} else {
-				// Fallback: use a generic but clear name instead of "_chat"
-				titleHint = GENERIC_CHAT_TITLE_FALLBACK;
-			}
-
-			console.log(
-				`iOS export detected. Original: "${chatFilename}", Derived title: "${titleHint}"`,
-			);
-		}
-
+		const titleHint = deriveChatTitle({
+			chatContent,
+			chatFilename,
+			chatEntryPath,
+			originalFileName,
+		});
 		parsedChat = parseChat(chatContent, titleHint);
 	} catch (error) {
-		console.error('Failed to parse chat file:', error);
-		throw new Error(
-			`Failed to parse chat file: ${chatFilename}\n\n` +
-				`Error: ${error instanceof Error ? error.message : String(error)}\n\n` +
-				`The file format may not be supported or the file may be corrupted.`,
-		);
+		throw buildChatParseFailedError(chatFilename, error);
 	}
 
 	// Validate that we got at least some messages
 	if (parsedChat.messages.length === 0) {
-		console.warn(
-			'No messages were parsed from the chat file. First few lines:',
-		);
-		for (let i = 0; i < Math.min(10, firstLines.length); i++) {
-			console.warn(`  Line ${i + 1}: ${firstLines[i]}`);
-		}
-
-		throw new Error(
-			`No messages found in chat file: ${chatFilename}\n\n` +
-				`The file was loaded but no messages could be parsed. This may indicate:\n` +
-				`1. The date format is not recognized\n` +
-				`2. The file structure is different from expected\n` +
-				`3. The file may be corrupted\n\n` +
-				`First line of file: "${firstLines[0]}"\n\n` +
-				`Please report this issue with information about your WhatsApp version and phone model.`,
-		);
+		throw buildNoMessagesError(chatFilename, firstLines);
 	}
 
 	console.log(
 		`Successfully parsed ${parsedChat.messages.length} messages from ${chatFilename}`,
+	);
+
+	return parsedChat;
+}
+
+function getJSZipEntrySize(zipEntry: JSZip.JSZipObject): number {
+	try {
+		// biome-ignore lint/suspicious/noExplicitAny: JSZip doesn't expose _data in its type definitions
+		const zipData = (zipEntry as any)._data;
+		if (zipData && typeof zipData.uncompressedSize === 'number') {
+			return zipData.uncompressedSize;
+		}
+	} catch (err) {
+		// Fallback to 0 if _data is not available or errors
+		const errorMessage = err instanceof Error ? err.message : String(err);
+		const errorStack = err instanceof Error ? err.stack : undefined;
+		console.warn(`Could not read size for ${zipEntry.name}: ${errorMessage}`, {
+			error: err,
+			stack: errorStack,
+			path: zipEntry.name,
+		});
+	}
+	return 0;
+}
+
+/**
+ * Parse a WhatsApp ZIP export file
+ * Uses lazy loading for media files to handle large backups efficiently
+ */
+export async function parseZipFile(
+	file: File | ArrayBuffer,
+	onProgress?: (progress: ParseProgress) => void,
+	originalFileName?: string,
+): Promise<ParsedZipChat> {
+	const zip = new JSZip();
+
+	onProgress?.({ stage: 'extracting', progress: 0 });
+
+	// Load ZIP (JSZip doesn't support progress callback for loadAsync)
+	const contents = await zip.loadAsync(file);
+
+	onProgress?.({ stage: 'extracting', progress: 30 });
+
+	const fileEntries = Object.entries(contents.files).filter(
+		([, entry]) => !entry.dir,
+	);
+
+	const classification = await classifyEntries(
+		fileEntries.map(([path, zipEntry]) => ({
+			path,
+			size: getJSZipEntrySize(zipEntry),
+		})),
+		(entryPath) => contents.files[entryPath].async('string'),
+		(fraction) =>
+			onProgress?.({ stage: 'extracting', progress: 30 + fraction * 50 }),
+	);
+
+	const mediaFiles: MediaFile[] = classification.mediaFiles.map((m) => ({
+		...m,
+		_zipEntry: contents.files[m.path],
+		_loaded: false,
+	}));
+
+	const contacts = new Map<string, ContactInfo>();
+	for (const vcf of classification.vcfContents) {
+		try {
+			const contactInfo = parseVcf(vcf.content);
+			if (contactInfo) {
+				// Store by lowercase name for case-insensitive lookup
+				contacts.set(contactInfo.name.toLowerCase(), contactInfo);
+			}
+		} catch (e) {
+			// Ignore VCF parsing errors - file might be corrupted
+			console.warn(`Failed to parse VCF file: ${vcf.path}`, e);
+		}
+	}
+
+	onProgress?.({ stage: 'parsing', progress: 0 });
+
+	const parsedChat = await parseClassifiedChat(
+		classification.chatContent,
+		classification.chatFilename,
+		classification.chatEntryPath,
+		originalFileName,
+		classification.allFiles,
 	);
 
 	onProgress?.({ stage: 'parsing', progress: 50 });
@@ -472,9 +584,134 @@ export async function parseZipFile(
 }
 
 /**
+ * Builds a media:// URL for a file that lives in an Electron-extracted
+ * chat folder (see electron/lib/extract-zip.cjs and main.cjs's 'media://'
+ * protocol handler).
+ */
+export function getExtractedMediaUrl(
+	mediaPath: string,
+	extractionId: string,
+): string {
+	const encodedPath = mediaPath.split('/').map(encodeURIComponent).join('/');
+	return `media://${extractionId}/${encodedPath}`;
+}
+
+/**
+ * Parse a chat that has already been streamed to disk by Electron's
+ * extraction pipeline (see electron/lib/extract-zip.cjs), instead of being
+ * held as an in-memory JSZip instance. Shares all classification/parsing
+ * logic with parseZipFile via classifyEntries/parseClassifiedChat - only
+ * how bytes are read (media:// fetch vs. JSZip.async) differs.
+ */
+export async function parseExtractedChat(
+	extracted: {
+		extractionDir: string;
+		extractionId: string;
+		originalFileName?: string;
+		entries: Array<{ name: string; path: string; size: number }>;
+	},
+	onProgress?: (progress: ParseProgress) => void,
+): Promise<ParsedZipChat> {
+	onProgress?.({ stage: 'extracting', progress: 0 });
+
+	const readText = async (entryPath: string): Promise<string> => {
+		const res = await fetch(
+			getExtractedMediaUrl(entryPath, extracted.extractionId),
+		);
+		if (!res.ok) {
+			throw new Error(`Failed to read extracted file: ${entryPath}`);
+		}
+		return res.text();
+	};
+
+	const classification = await classifyEntries(
+		extracted.entries.map((e) => ({ path: e.path, size: e.size })),
+		readText,
+		(fraction) =>
+			onProgress?.({ stage: 'extracting', progress: fraction * 100 }),
+	);
+
+	const mediaFiles: MediaFile[] = classification.mediaFiles.map((m) => ({
+		...m,
+		_extractionId: extracted.extractionId,
+		_loaded: false,
+	}));
+
+	const contacts = new Map<string, ContactInfo>();
+	for (const vcf of classification.vcfContents) {
+		try {
+			const contactInfo = parseVcf(vcf.content);
+			if (contactInfo) {
+				contacts.set(contactInfo.name.toLowerCase(), contactInfo);
+			}
+		} catch (e) {
+			console.warn(`Failed to parse VCF file: ${vcf.path}`, e);
+		}
+	}
+
+	onProgress?.({ stage: 'parsing', progress: 0 });
+
+	const parsedChat = await parseClassifiedChat(
+		classification.chatContent,
+		classification.chatFilename,
+		classification.chatEntryPath,
+		extracted.originalFileName,
+		classification.allFiles,
+	);
+
+	onProgress?.({ stage: 'parsing', progress: 50 });
+
+	const enhancedMessages = matchMediaToMessages(
+		parsedChat.messages,
+		mediaFiles,
+	);
+
+	onProgress?.({ stage: 'parsing', progress: 100 });
+
+	return {
+		...parsedChat,
+		messages: enhancedMessages,
+		mediaFiles,
+		hasMedia: mediaFiles.length > 0,
+		contacts,
+		extractionDir: extracted.extractionDir,
+		extractionId: extracted.extractionId,
+	};
+}
+
+/**
+ * Returns whether a MediaFile has a loadable byte source, regardless of
+ * whether it's backed by an in-memory JSZip entry or an Electron-extracted
+ * file on disk.
+ */
+export function mediaFileHasSource(media: MediaFile): boolean {
+	return Boolean(media._zipEntry) || Boolean(media._extractionId);
+}
+
+/**
+ * Reads a MediaFile's full bytes regardless of its source (in-memory ZIP
+ * entry or Electron-extracted file on disk).
+ */
+export async function getMediaBytes(media: MediaFile): Promise<ArrayBuffer> {
+	if (media._zipEntry) return media._zipEntry.async('arraybuffer');
+	if (media._extractionId) {
+		const res = await fetch(
+			getExtractedMediaUrl(media.path, media._extractionId),
+		);
+		if (!res.ok) {
+			throw new Error(`Failed to fetch extracted media: ${media.name}`);
+		}
+		return res.arrayBuffer();
+	}
+	throw new Error(
+		`Cannot load media file: ${media.name} - no source available`,
+	);
+}
+
+/**
  * Try to match media files with their corresponding messages
  */
-function matchMediaToMessages(
+export function matchMediaToMessages(
 	messages: ChatMessage[],
 	mediaFiles: MediaFile[],
 ): ChatMessage[] {
@@ -621,6 +858,26 @@ export async function loadMediaFile(media: MediaFile): Promise<string> {
 		return media.url;
 	}
 
+	if (!mediaFileHasSource(media)) {
+		throw new Error(
+			`Cannot load media file: ${media.name} - no source available`,
+		);
+	}
+
+	// Extracted video/audio stream natively via the media:// protocol
+	// (which supports Range requests for scrubbing) instead of being
+	// pre-buffered into a Blob. Skips the cache entirely - the URL stays
+	// valid for as long as the extraction folder exists, no revocation
+	// needed.
+	if (
+		media._extractionId &&
+		(media.type === 'video' || media.type === 'audio')
+	) {
+		media.url = getExtractedMediaUrl(media.path, media._extractionId);
+		media._loaded = true;
+		return media.url;
+	}
+
 	// Check if in cache
 	const cached = loadedMediaCache.get(media.path);
 	if (cached) {
@@ -630,20 +887,13 @@ export async function loadMediaFile(media: MediaFile): Promise<string> {
 		return cached.url;
 	}
 
-	// Need to load from zip
-	if (!media._zipEntry) {
-		throw new Error(
-			`Cannot load media file: ${media.name} - no zip entry reference`,
-		);
-	}
-
 	// Evict old entries if cache is full
 	if (loadedMediaCache.size >= MAX_CACHED_MEDIA) {
 		evictOldestFromCache();
 	}
 
 	// Load the blob with correct MIME type
-	const arrayBuffer = await media._zipEntry.async('arraybuffer');
+	const arrayBuffer = await getMediaBytes(media);
 	const mimeType = getMimeType(media.name);
 	const blob = new Blob([arrayBuffer], { type: mimeType });
 	const url = URL.createObjectURL(blob);
@@ -708,7 +958,7 @@ export async function preloadMedia(mediaFiles: MediaFile[]): Promise<void> {
 		const batch = mediaFiles.slice(i, i + BATCH_SIZE);
 		await Promise.all(
 			batch
-				.filter((m) => !m._loaded && m._zipEntry)
+				.filter((m) => !m._loaded && mediaFileHasSource(m))
 				.map((m) => loadMediaFile(m).catch(() => {})), // Ignore individual failures
 		);
 	}

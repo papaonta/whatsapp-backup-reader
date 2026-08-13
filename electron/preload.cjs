@@ -19,6 +19,25 @@ contextBridge.exposeInMainWorld('electronAPI', {
 	// External links
 	openExternal: (url) => ipcRenderer.invoke('shell:openExternal', url),
 
+	// ZIP extraction (streams a large export to disk instead of buffering
+	// it all in memory - see electron/lib/extract-zip.cjs)
+	extraction: {
+		extract: (zipFilePath, extractionId) =>
+			ipcRenderer.invoke('extraction:extract', zipFilePath, extractionId),
+		loadManifest: (extractionDir) =>
+			ipcRenderer.invoke('extraction:loadManifest', extractionDir),
+		deleteDir: (extractionDir) =>
+			ipcRenderer.invoke('extraction:deleteDir', extractionDir),
+		pruneOrphans: (keepExtractionIds) =>
+			ipcRenderer.invoke('extraction:pruneOrphans', keepExtractionIds),
+		onProgress: (callback) => {
+			const subscription = (_event, data) => callback(data);
+			ipcRenderer.on('extraction:progress', subscription);
+			return () =>
+				ipcRenderer.removeListener('extraction:progress', subscription);
+		},
+	},
+
 	// Auto-updater
 	updater: {
 		checkForUpdates: () => ipcRenderer.invoke('updater:checkForUpdates'),

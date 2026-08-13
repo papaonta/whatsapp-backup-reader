@@ -8,7 +8,7 @@ import {
 import * as m from '$lib/paraglide/messages';
 import { getLocale } from '$lib/paraglide/runtime';
 import type { ChatMessage } from '$lib/parser';
-import { formatTime, loadMediaFile } from '$lib/parser';
+import { formatTime, loadMediaFile, mediaFileHasSource } from '$lib/parser';
 import type { MediaFile } from '$lib/parser/zip-parser';
 import {
 	getCachedTranscription,
@@ -123,7 +123,8 @@ const bubbleClass = $derived(
 const bubbleWidthClass = $derived(
 	message.isMediaMessage &&
 		message.mediaType === 'audio' &&
-		message.mediaFile?._zipEntry
+		message.mediaFile &&
+		mediaFileHasSource(message.mediaFile)
 		? 'min-w-[280px] max-w-[90%] sm:max-w-[400px]'
 		: 'max-w-[75%]',
 );
@@ -172,7 +173,9 @@ $effect(() => {
 });
 
 // Check if this message has an actual media file that can be loaded
-const hasMediaFile = $derived(message.mediaFile?._zipEntry);
+const hasMediaFile = $derived(
+	message.mediaFile && mediaFileHasSource(message.mediaFile),
+);
 
 // Check for cached transcription on mount
 $effect(() => {

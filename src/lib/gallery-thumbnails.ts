@@ -5,7 +5,11 @@
  * This avoids keeping many large blobs in memory just to render a grid.
  */
 
-import type { MediaFile } from './parser/zip-parser';
+import {
+	getMediaBytes,
+	type MediaFile,
+	mediaFileHasSource,
+} from './parser/zip-parser';
 
 const DEFAULT_MAX_SIZE = 256;
 const DEFAULT_QUALITY = 0.82;
@@ -96,7 +100,7 @@ export async function getImageThumbnailUrl(
 	options?: { maxSize?: number; quality?: number },
 ): Promise<string | null> {
 	if (media.type !== 'image') return null;
-	if (!media._zipEntry) return null;
+	if (!mediaFileHasSource(media)) return null;
 
 	const key = media.path;
 	const cached = thumbnailUrlCache.get(key);
@@ -118,7 +122,7 @@ export async function getImageThumbnailUrl(
 			const maxSize = options?.maxSize ?? DEFAULT_MAX_SIZE;
 			const quality = options?.quality ?? DEFAULT_QUALITY;
 
-			const arrayBuffer = await media._zipEntry?.async('arraybuffer');
+			const arrayBuffer = await getMediaBytes(media).catch(() => null);
 			if (!arrayBuffer) return null;
 
 			const mimeType = getImageMimeType(media.name);

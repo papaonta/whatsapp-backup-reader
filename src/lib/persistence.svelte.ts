@@ -38,7 +38,17 @@ export interface PersistedChatMetadata {
 	fileReference:
 		| { type: 'electron-path'; filePath: string }
 		| { type: 'file-handle'; handleId: string } // Handle stored separately
-		| { type: 'reselect-required' };
+		| { type: 'reselect-required' }
+		// Electron only - chat was streamed to disk instead of buffered in
+		// memory (see electron/lib/extract-zip.cjs). originalFilePath is kept
+		// as a fallback to re-extract from if the extraction folder is gone
+		// (e.g. app data was cleared).
+		| {
+				type: 'electron-extracted';
+				extractionDir: string;
+				extractionId: string;
+				originalFilePath: string;
+		  };
 
 	// Persisted data (always stored - small)
 	bookmarks: Bookmark[];
@@ -169,6 +179,7 @@ export async function savePersistedChat(
 	},
 	filePath?: string, // For Electron
 	fileHandle?: FileSystemFileHandle, // For web with File System Access API
+	extraction?: { extractionDir: string; extractionId: string }, // For Electron chats imported via the streaming extraction pipeline
 ): Promise<string> {
 	if (!browser) throw new Error('Persistence only available in browser');
 
@@ -197,7 +208,17 @@ export async function savePersistedChat(
 	// Check if running in Electron
 	const isElectron = window.electronAPI?.isElectron;
 
-	if (isElectron && filePath) {
+	if (isElectron && extraction) {
+		// Electron: chat was streamed to an extraction folder on disk -
+		// restoring re-reads that folder's manifest instantly, no re-parsing
+		// of the original zip needed.
+		fileReference = {
+			type: 'electron-extracted',
+			extractionDir: extraction.extractionDir,
+			extractionId: extraction.extractionId,
+			originalFilePath: filePath ?? '',
+		};
+	} else if (isElectron && filePath) {
 		// Electron: store absolute file path
 		fileReference = { type: 'electron-path', filePath };
 	} else if (fileHandle) {
@@ -283,6 +304,20 @@ export async function removePersistedChat(id: string): Promise<void> {
 		// Remove associated file handle if this was a file-handle reference
 		if (metadata?.fileReference.type === 'file-handle') {
 			await del(`${HANDLE_PREFIX}${metadata.fileReference.handleId}`);
+		}
+		// Delete the on-disk extraction folder if this was an
+		// electron-extracted reference - every "delete this persisted chat"
+		// call site funnels through here, so this alone covers all of them.
+		if (
+			metadata?.fileReference.type === 'electron-extracted' &&
+			window.electronAPI?.isElectron &&
+			window.electronAPI.extraction
+		) {
+			await window.electronAPI.extraction
+				.deleteDir(metadata.fileReference.extractionDir)
+				.catch((e) => {
+					console.error('Failed to delete extraction folder:', e);
+				});
 		}
 	} catch (e) {
 		console.error('Failed to remove persisted chat:', e);
@@ -396,9 +431,17 @@ export async function restoreChat(
 ): Promise<{
 	success: boolean;
 	data?: {
-		buffer: ArrayBuffer;
+		buffer?: ArrayBuffer;
 		name: string;
 		metadata: PersistedChatMetadata;
+		// Set instead of buffer when restoring from an Electron extraction
+		// folder - no re-parsing of the original zip needed.
+		extracted?: {
+			extractionDir: string;
+			extractionId: string;
+			originalFileName?: string;
+			entries: { name: string; path: string; size: number }[];
+		};
 	};
 	error?: string;
 	needsReselect?: boolean;
@@ -409,6 +452,72 @@ export async function restoreChat(
 	const { fileReference } = persistedChat;
 
 	try {
+		// Electron extraction folder - instant restore, no re-extraction
+		if (fileReference.type === 'electron-extracted') {
+			const isElectron = window.electronAPI?.isElectron;
+			if (!isElectron || !window.electronAPI?.extraction) {
+				return { success: false, needsReselect: true };
+			}
+
+			const manifest = await window.electronAPI.extraction.loadManifest(
+				fileReference.extractionDir,
+			);
+			if (manifest.success && manifest.entries) {
+				return {
+					success: true,
+					data: {
+						name: manifest.originalFileName || persistedChat.fileName,
+						metadata: persistedChat,
+						extracted: {
+							extractionDir: fileReference.extractionDir,
+							extractionId: fileReference.extractionId,
+							originalFileName: manifest.originalFileName,
+							entries: manifest.entries,
+						},
+					},
+				};
+			}
+
+			// Extraction folder is gone (e.g. app data was cleared) - fall back
+			// to re-extracting from the original zip path before giving up.
+			const originalExists = fileReference.originalFilePath
+				? await window.electronAPI.fileExists(fileReference.originalFilePath)
+				: false;
+			if (!originalExists) {
+				return {
+					success: false,
+					error: 'Extraction folder not found and original file is gone',
+					needsReselect: true,
+				};
+			}
+
+			const extractResult = await window.electronAPI.extraction.extract(
+				fileReference.originalFilePath,
+				fileReference.extractionId,
+			);
+			if (!extractResult.success || !extractResult.entries) {
+				return {
+					success: false,
+					error: extractResult.error || 'Failed to re-extract',
+					needsReselect: true,
+				};
+			}
+
+			return {
+				success: true,
+				data: {
+					name: extractResult.originalFileName || persistedChat.fileName,
+					metadata: persistedChat,
+					extracted: {
+						extractionDir: fileReference.extractionDir,
+						extractionId: fileReference.extractionId,
+						originalFileName: extractResult.originalFileName,
+						entries: extractResult.entries,
+					},
+				},
+			};
+		}
+
 		// Electron path
 		if (fileReference.type === 'electron-path') {
 			const isElectron = window.electronAPI?.isElectron;
@@ -695,6 +804,20 @@ export function isElectronPathReference(
 	ref: PersistedChatMetadata['fileReference'],
 ): ref is { type: 'electron-path'; filePath: string } {
 	return ref.type === 'electron-path';
+}
+
+/**
+ * Type guard to check if a file reference is an electron-extracted type
+ */
+export function isElectronExtractedReference(
+	ref: PersistedChatMetadata['fileReference'],
+): ref is {
+	type: 'electron-extracted';
+	extractionDir: string;
+	extractionId: string;
+	originalFilePath: string;
+} {
+	return ref.type === 'electron-extracted';
 }
 
 /**

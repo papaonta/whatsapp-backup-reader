@@ -46,7 +46,8 @@
 		"act:deploy": ".act/run workflow_dispatch -W .github/workflows/deploy.yml -j build"
 	},
 	"dependencies": {
-		"electron-updater": "^6.8.3"
+		"electron-updater": "^6.8.3",
+		"yauzl": "^3.4.0"
 	},
 	"overrides": {
 		"cookie": "^0.7.0"

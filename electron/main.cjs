@@ -10,6 +10,16 @@ const {
 const { autoUpdater } = require('electron-updater');
 const path = require('node:path');
 const fs = require('node:fs');
+const {
+	getExtractionRoot,
+	isValidExtractionId,
+	extractZipToDirectory,
+	loadManifest: loadExtractionManifest,
+	deleteExtractionDir,
+	pruneOrphans: pruneOrphanedExtractions,
+	resolveMediaFilePath,
+	buildMediaFileResponse,
+} = require('./lib/extract-zip.cjs');
 
 let mainWindow;
 
@@ -71,7 +81,7 @@ const createWindow = () => {
 	}
 };
 
-// Register custom protocol for serving local files
+// Register custom protocols for serving local files
 // This allows absolute paths like /favicon.ico to work
 protocol.registerSchemesAsPrivileged([
 	{
@@ -80,6 +90,19 @@ protocol.registerSchemesAsPrivileged([
 			standard: true,
 			secure: true,
 			supportFetchAPI: true,
+		},
+	},
+	{
+		// Serves extracted chat media (images/video/audio/documents) straight
+		// from disk instead of buffering them into Blobs - net.fetch()'s
+		// file:// support forwards Range requests, which is what lets
+		// <video>/<audio> elements scrub without pre-loading the whole file.
+		scheme: 'media',
+		privileges: {
+			standard: true,
+			secure: true,
+			supportFetchAPI: true,
+			corsEnabled: true,
 		},
 	},
 ]);
@@ -138,6 +161,30 @@ app.whenReady().then(() => {
 		}
 	});
 
+	// Register protocol handler for 'media://' scheme - serves files from an
+	// extraction folder (see electron/lib/extract-zip.cjs) at
+	// media://<extractionId>/<relative-path-within-media-dir>
+	protocol.handle('media', async (request) => {
+		const requestUrl = new URL(request.url);
+		const extractionId = requestUrl.hostname;
+		const relPath = decodeURIComponent(requestUrl.pathname.replace(/^\/+/, ''));
+
+		const resolved = await resolveMediaFilePath(
+			getExtractionRoot(app),
+			extractionId,
+			relPath,
+		);
+		if (!resolved) {
+			return new Response('Not Found', { status: 404 });
+		}
+
+		return buildMediaFileResponse(
+			resolved,
+			relPath,
+			request.headers.get('Range'),
+		);
+	});
+
 	createWindow();
 
 	// Setup auto-updater (production only)
@@ -177,16 +224,15 @@ ipcMain.handle('dialog:openFile', async () => {
 
 	const filePath = result.filePaths[0];
 	const fileName = path.basename(filePath);
-	const fileContent = fs.readFileSync(filePath);
 
+	// Deliberately does NOT read the file here - the renderer streams large
+	// imports to disk via the extraction:extract IPC channel instead of
+	// buffering the whole ZIP in memory (see electron/lib/extract-zip.cjs).
+	// Callers that genuinely need the raw bytes (e.g. ReselectFileModal's
+	// legacy re-select flow) fetch them separately via readFileFromPath.
 	return {
 		path: filePath,
 		name: fileName,
-		// Slice the buffer to avoid sending the entire Node.js Buffer pool
-		buffer: fileContent.buffer.slice(
-			fileContent.byteOffset,
-			fileContent.byteOffset + fileContent.byteLength,
-		),
 	};
 });
 
@@ -231,29 +277,35 @@ ipcMain.handle('fs:fileExists', async (_event, filePath) => {
 	return fs.existsSync(filePath);
 });
 
+// Validates a user-facing absolute path to a .zip file: rejects non-strings,
+// relative paths, traversal segments, non-.zip extensions, and symlinks.
+// Shared by every IPC handler that reads a zip file directly from disk.
+async function validateAbsoluteZipPath(filePath) {
+	if (typeof filePath !== 'string') {
+		throw new Error('Invalid file path');
+	}
+	if (!path.isAbsolute(filePath)) {
+		throw new Error('Invalid file path');
+	}
+	if (filePath.split(/[/\\]+/).includes('..')) {
+		throw new Error('Invalid file path');
+	}
+	const normalized = path.resolve(filePath);
+	if (path.extname(normalized).toLowerCase() !== '.zip') {
+		throw new Error('Only .zip files are allowed');
+	}
+	// Pre-check with lstat to reject symlinks (works cross-platform including Windows)
+	const lst = await fs.promises.lstat(normalized);
+	if (!lst.isFile() || lst.isSymbolicLink()) {
+		throw new Error('Path is not a regular file');
+	}
+	return normalized;
+}
+
 // Read file from absolute path (for persistence)
 ipcMain.handle('file:readFromPath', async (_event, filePath) => {
 	try {
-		if (typeof filePath !== 'string') {
-			return { success: false, error: 'Invalid file path' };
-		}
-		const normalized = path.resolve(filePath);
-		// Require absolute path and reject path traversal segments
-		if (!path.isAbsolute(filePath)) {
-			return { success: false, error: 'Invalid file path' };
-		}
-		if (filePath.split(/[/\\]+/).includes('..')) {
-			return { success: false, error: 'Invalid file path' };
-		}
-		if (path.extname(normalized).toLowerCase() !== '.zip') {
-			return { success: false, error: 'Only .zip files are allowed' };
-		}
-
-		// Pre-check with lstat to reject symlinks (works cross-platform including Windows)
-		const lst = await fs.promises.lstat(normalized);
-		if (!lst.isFile() || lst.isSymbolicLink()) {
-			return { success: false, error: 'Path is not a regular file' };
-		}
+		const normalized = await validateAbsoluteZipPath(filePath);
 
 		// Use O_NOFOLLOW when available to reject symlinks atomically (not supported on Windows)
 		const openFlags =
@@ -274,6 +326,88 @@ ipcMain.handle('file:readFromPath', async (_event, filePath) => {
 		} finally {
 			await fd.close();
 		}
+	} catch (error) {
+		return {
+			success: false,
+			error: error instanceof Error ? error.message : String(error),
+		};
+	}
+});
+
+// Extraction IPC handlers
+ipcMain.handle(
+	'extraction:extract',
+	async (_event, zipFilePath, extractionId) => {
+		try {
+			const normalized = await validateAbsoluteZipPath(zipFilePath);
+			if (!isValidExtractionId(extractionId)) {
+				return { success: false, error: 'Invalid extraction id' };
+			}
+
+			const result = await extractZipToDirectory({
+				zipPath: normalized,
+				extractionId,
+				extractionRoot: getExtractionRoot(app),
+				onProgress: (progress) => {
+					if (mainWindow && !mainWindow.isDestroyed()) {
+						mainWindow.webContents.send('extraction:progress', {
+							extractionId,
+							...progress,
+						});
+					}
+				},
+			});
+
+			return { success: true, ...result };
+		} catch (error) {
+			return {
+				success: false,
+				error: error instanceof Error ? error.message : String(error),
+			};
+		}
+	},
+);
+
+ipcMain.handle('extraction:loadManifest', async (_event, extractionDir) => {
+	try {
+		if (typeof extractionDir !== 'string') {
+			throw new Error('Invalid extraction directory');
+		}
+		const resolved = path.resolve(extractionDir);
+		const root = getExtractionRoot(app);
+		if (resolved !== root && !resolved.startsWith(root + path.sep)) {
+			throw new Error('Path escapes extraction root');
+		}
+		const result = await loadExtractionManifest(resolved);
+		return { success: true, ...result };
+	} catch (error) {
+		return {
+			success: false,
+			error: error instanceof Error ? error.message : String(error),
+		};
+	}
+});
+
+ipcMain.handle('extraction:deleteDir', async (_event, extractionDir) => {
+	try {
+		if (typeof extractionDir !== 'string') {
+			throw new Error('Invalid extraction directory');
+		}
+		await deleteExtractionDir(getExtractionRoot(app), extractionDir);
+		return { success: true };
+	} catch (error) {
+		return {
+			success: false,
+			error: error instanceof Error ? error.message : String(error),
+		};
+	}
+});
+
+ipcMain.handle('extraction:pruneOrphans', async (_event, keepExtractionIds) => {
+	try {
+		const ids = Array.isArray(keepExtractionIds) ? keepExtractionIds : [];
+		const result = await pruneOrphanedExtractions(getExtractionRoot(app), ids);
+		return { success: true, ...result };
 	} catch (error) {
 		return {
 			success: false,

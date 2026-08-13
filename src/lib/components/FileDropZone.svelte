@@ -1,5 +1,8 @@
 <script lang="ts">
-import { openElectronFile } from '$lib/helpers/file-picker';
+import {
+	createPlaceholderZipFile,
+	openElectronFile,
+} from '$lib/helpers/file-picker';
 import * as m from '$lib/paraglide/messages';
 import Icon from './Icon.svelte';
 
@@ -90,12 +93,8 @@ async function openElectronFilePicker() {
 		const result = await openElectronFile();
 		if (result) {
 			const dataTransfer = new DataTransfer();
-			dataTransfer.items.add(result.file);
-			onFilesSelected(
-				dataTransfer.files,
-				undefined,
-				result.path ? [result.path] : undefined,
-			);
+			dataTransfer.items.add(createPlaceholderZipFile(result.name));
+			onFilesSelected(dataTransfer.files, undefined, [result.path]);
 		}
 	} else {
 		openFilePicker();

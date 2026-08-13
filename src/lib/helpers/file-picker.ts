@@ -9,11 +9,17 @@
  */
 
 /**
- * Open a file via Electron's native dialog and return a File + absolute path.
- * Returns null when not running in Electron or the user cancelled.
+ * Open a file via Electron's native dialog and return its name + absolute
+ * path. Returns null when not running in Electron or the user cancelled.
+ *
+ * Deliberately does not read the file's contents - large imports stream to
+ * disk via the extraction:extract IPC channel instead (see
+ * electron/lib/extract-zip.cjs). Callers that genuinely need the raw bytes
+ * (e.g. ReselectFileModal's legacy re-select flow) fetch them separately via
+ * window.electronAPI.readFileFromPath(path).
  */
 export async function openElectronFile(): Promise<{
-	file: File;
+	name: string;
 	path: string;
 } | null> {
 	if (!window.electronAPI) return null;
@@ -21,9 +27,7 @@ export async function openElectronFile(): Promise<{
 	const result = await window.electronAPI.openFile();
 	if (!result) return null;
 
-	const blob = new Blob([result.buffer]);
-	const file = new File([blob], result.name, { type: 'application/zip' });
-	return { file, path: result.path };
+	return { name: result.name, path: result.path };
 }
 
 /**
@@ -32,4 +36,15 @@ export async function openElectronFile(): Promise<{
  */
 export function getElectronFilePath(file: File): string | undefined {
 	return 'path' in file ? (file as File & { path: string }).path : undefined;
+}
+
+/**
+ * Builds an empty, content-less File carrying only a name - just enough for
+ * handleFilesSelected's FileList-shaped API (name/extension checks, loading
+ * placeholder text) when the real bytes will instead be streamed straight to
+ * disk from the absolute path via the extraction pipeline, not read from
+ * this File object.
+ */
+export function createPlaceholderZipFile(name: string): File {
+	return new File([], name, { type: 'application/zip' });
 }

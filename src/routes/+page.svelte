@@ -40,6 +40,7 @@ import { resolveUniqueChatTitle } from '$lib/helpers/chat-title';
 import { triggerDownload } from '$lib/helpers/download';
 import { buildChatExportHtml } from '$lib/helpers/export-chat';
 import {
+	createPlaceholderZipFile,
 	getElectronFilePath,
 	openElectronFile,
 } from '$lib/helpers/file-picker';
@@ -58,6 +59,7 @@ import {
 import * as m from '$lib/paraglide/messages';
 import { getLocale } from '$lib/paraglide/runtime';
 import {
+	parseExtractedChat,
 	parseZipFile,
 	readFileAsArrayBuffer,
 	toLocalDateKey,
@@ -68,6 +70,7 @@ import {
 	getDontShowRestoreModal,
 	getLockPin,
 	getPersistedChats,
+	isElectronExtractedReference,
 	isElectronPathReference,
 	type PersistedChatMetadata,
 	removePersistedChat,
@@ -281,6 +284,11 @@ let chatFileReferences = $state<
 			filePath?: string;
 			fileHandle?: FileSystemFileHandle;
 			persistedId?: string;
+			// Set only for Electron chats imported via the streaming extraction
+			// pipeline (see electron/lib/extract-zip.cjs) instead of the
+			// in-memory JSZip pipeline.
+			extractionDir?: string;
+			extractionId?: string;
 		}
 	>
 >(new Map());
@@ -375,12 +383,8 @@ async function handleSidebarImport() {
 		const result = await openElectronFile();
 		if (result) {
 			const dt = new DataTransfer();
-			dt.items.add(result.file);
-			handleFilesSelected(
-				dt.files,
-				undefined,
-				result.path ? [result.path] : undefined,
-			);
+			dt.items.add(createPlaceholderZipFile(result.name));
+			handleFilesSelected(dt.files, undefined, [result.path]);
 		}
 	} else {
 		// Deliberately use the plain <input type="file"> dialog instead of
@@ -429,25 +433,80 @@ async function handleFilesSelected(
 		// Process file asynchronously
 		(async () => {
 			try {
-				// Read file (0-10% of progress)
-				const buffer = await readFileAsArrayBuffer(file, (readProgress) => {
-					loadingChats = loadingChats.map((lc) =>
-						lc.id === loadingId
-							? {
-									...lc,
-									progress: readProgress * 0.1,
-									stage: 'reading' as const,
-								}
-							: lc,
-					);
-				});
+				let chatData: ChatData;
+				let extractionInfo:
+					| { extractionDir: string; extractionId: string }
+					| undefined;
 
-				// Parse ZIP file using Web Worker
-				const chatData: ChatData = await parseZipFile(
-					buffer,
-					makeProgressCallback(loadingId),
-					file.name,
-				);
+				const electronExtractionApi = window.electronAPI?.isElectron
+					? window.electronAPI.extraction
+					: undefined;
+
+				if (electronExtractionApi && droppedFilePath) {
+					// Stream the zip straight to disk instead of buffering it in
+					// memory - this is the fix for large (multi-GB) exports
+					// failing silently. See electron/lib/extract-zip.cjs.
+					const extractionId = crypto.randomUUID();
+					const progressCallback = makeProgressCallback(loadingId);
+					const unsubscribe = electronExtractionApi.onProgress((data) => {
+						if (data.extractionId !== extractionId) return;
+						progressCallback({
+							stage: 'extracting',
+							progress: data.progress,
+						});
+					});
+
+					try {
+						const result = await electronExtractionApi.extract(
+							droppedFilePath,
+							extractionId,
+						);
+						if (!result.success || !result.entries || !result.extractionDir) {
+							throw new Error(result.error || m.error_parse_failed());
+						}
+
+						chatData = await parseExtractedChat(
+							{
+								extractionDir: result.extractionDir,
+								extractionId,
+								originalFileName: result.originalFileName || file.name,
+								entries: result.entries,
+							},
+							({ progress }) => {
+								// parseExtractedChat's own stages both happen after the
+								// disk-copy above, which already occupies the full
+								// "extracting" progress budget - fold them into
+								// "parsing" so the bar doesn't jump backwards.
+								progressCallback({ stage: 'parsing', progress });
+							},
+						);
+						extractionInfo = {
+							extractionDir: result.extractionDir,
+							extractionId,
+						};
+					} finally {
+						unsubscribe();
+					}
+				} else {
+					// Read file (0-10% of progress)
+					const buffer = await readFileAsArrayBuffer(file, (readProgress) => {
+						loadingChats = loadingChats.map((lc) =>
+							lc.id === loadingId
+								? {
+										...lc,
+										progress: readProgress * 0.1,
+										stage: 'reading' as const,
+									}
+								: lc,
+						);
+					});
+
+					chatData = await parseZipFile(
+						buffer,
+						makeProgressCallback(loadingId),
+						file.name,
+					);
+				}
 
 				// Remove loading placeholder and add actual chat
 				loadingChats = loadingChats.filter((lc) => lc.id !== loadingId);
@@ -464,6 +523,8 @@ async function handleFilesSelected(
 					file,
 					filePath: droppedFilePath,
 					fileHandle: droppedHandle,
+					extractionDir: extractionInfo?.extractionDir,
+					extractionId: extractionInfo?.extractionId,
 				});
 
 				// Remember this chat automatically so it survives an app
@@ -514,6 +575,15 @@ function handleRemoveChat(index: number) {
 	appState.removeChat(index);
 
 	if (chatTitle) {
+		const fileRef = chatFileReferences.get(chatTitle);
+		// A never-remembered Electron-extracted chat has no persisted record
+		// to clean its extraction folder up later - delete it now instead of
+		// leaving it orphaned on disk indefinitely.
+		if (fileRef?.extractionDir && !rememberedChats.has(chatTitle)) {
+			window.electronAPI?.extraction
+				?.deleteDir(fileRef.extractionDir)
+				.catch((e) => console.error('Failed to delete extraction folder:', e));
+		}
 		chatFileReferences.delete(chatTitle);
 	}
 }
@@ -792,6 +862,25 @@ $effect(() => {
 	(async () => {
 		try {
 			const persisted = await getPersistedChats();
+
+			// Prune extraction folders left behind by a crash/force-quit
+			// between creating one and it being persisted, or from any
+			// persisted-but-later-removed electron-extracted chat that
+			// somehow didn't get its folder cleaned up. Runs once per
+			// launch; a no-op unless something was actually orphaned.
+			if (window.electronAPI?.isElectron && window.electronAPI.extraction) {
+				const keepIds = persisted
+					.filter((p) => isElectronExtractedReference(p.fileReference))
+					.map(
+						(p) => (p.fileReference as { extractionId: string }).extractionId,
+					);
+				window.electronAPI.extraction
+					.pruneOrphans(keepIds)
+					.catch((e) =>
+						console.error('Failed to prune orphaned extraction folders:', e),
+					);
+			}
+
 			if (persisted.length === 0) return;
 
 			// Seed rememberedChats from IndexedDB so toggle state is correct
@@ -900,14 +989,16 @@ async function handleRestoreChats(chatIds: string[]) {
 			}
 
 			// Parse and load the chat
-			const { validationPassed } = await loadChatFromBuffer(
-				result.data.buffer,
-				result.data.name,
-				persistedChat,
-				isElectronPathReference(result.data.metadata.fileReference)
-					? result.data.metadata.fileReference.filePath
-					: undefined,
-			);
+			const { validationPassed } = result.data.extracted
+				? await loadChatFromExtraction(result.data.extracted, persistedChat)
+				: await loadChatFromBuffer(
+						result.data.buffer as ArrayBuffer,
+						result.data.name,
+						persistedChat,
+						isElectronPathReference(result.data.metadata.fileReference)
+							? result.data.metadata.fileReference.filePath
+							: undefined,
+					);
 
 			if (!validationPassed) {
 				showToast(
@@ -920,13 +1011,22 @@ async function handleRestoreChats(chatIds: string[]) {
 			}
 
 			// Store file reference for subsequent toggle operations
-			chatFileReferences.set(persistedChat.chatTitle, {
-				file: null,
-				filePath: isElectronPathReference(result.data.metadata.fileReference)
-					? result.data.metadata.fileReference.filePath
-					: undefined,
-				persistedId: persistedChat.id,
-			});
+			if (result.data.extracted) {
+				chatFileReferences.set(persistedChat.chatTitle, {
+					file: null,
+					extractionDir: result.data.extracted.extractionDir,
+					extractionId: result.data.extracted.extractionId,
+					persistedId: persistedChat.id,
+				});
+			} else {
+				chatFileReferences.set(persistedChat.chatTitle, {
+					file: null,
+					filePath: isElectronPathReference(result.data.metadata.fileReference)
+						? result.data.metadata.fileReference.filePath
+						: undefined,
+					persistedId: persistedChat.id,
+				});
+			}
 
 			addRemembered(persistedChat.chatTitle);
 		} catch (e) {
@@ -979,6 +1079,75 @@ async function handleDeletePersistedChat(id: string) {
 }
 
 // Load chat from buffer with optional restoration metadata
+// Applies restored bookmarks/transcriptions/settings (when restoring a
+// persisted chat) and registers the parsed chat with the app - the shared
+// tail between loadChatFromBuffer and loadChatFromExtraction, since
+// everything from here on is identical regardless of where the chat's bytes
+// came from.
+async function applyRestoredChatData(
+	chatData: ChatData,
+	loadingId: string,
+	restoredMetadata?: PersistedChatMetadata,
+): Promise<{ validationPassed: boolean }> {
+	// If restoring, validate the file before touching any app state - a
+	// mismatched file must never be added/displayed as if it were correct
+	if (restoredMetadata) {
+		const validation = validateRestoredFile(chatData, restoredMetadata);
+		if (!validation.valid) {
+			console.warn('Restored file validation failed:', validation.reasons);
+			loadingChats = loadingChats.filter((lc) => lc.id !== loadingId);
+			return { validationPassed: false };
+		}
+
+		// Restore bookmarks
+		if (restoredMetadata.bookmarks.length > 0) {
+			bookmarksState.importBookmarks({
+				version: 1,
+				exportedAt: restoredMetadata.savedAt,
+				bookmarks: restoredMetadata.bookmarks,
+			});
+		}
+
+		// Restore transcriptions
+		if (Object.keys(restoredMetadata.transcriptions).length > 0) {
+			setTranscriptionsForChat(restoredMetadata.transcriptions);
+		}
+
+		// Restore settings
+		if (restoredMetadata.settings.language) {
+			languageByChat.set(chatData.title, restoredMetadata.settings.language);
+			languageByChat = new Map(languageByChat);
+		}
+		if (restoredMetadata.settings.autoLoadMedia !== undefined) {
+			autoLoadMediaByChat.set(
+				chatData.title,
+				restoredMetadata.settings.autoLoadMedia,
+			);
+			autoLoadMediaByChat = new Map(autoLoadMediaByChat);
+		}
+		if (restoredMetadata.settings.perspective !== undefined) {
+			perspectiveByChat.set(
+				chatData.title,
+				restoredMetadata.settings.perspective,
+			);
+			perspectiveByChat = new Map(perspectiveByChat);
+		}
+		if (restoredMetadata.settings.locked !== undefined) {
+			lockedByChat.set(chatData.title, restoredMetadata.settings.locked);
+			lockedByChat = new Map(lockedByChat);
+		}
+	}
+
+	// Remove loading placeholder and add actual chat
+	loadingChats = loadingChats.filter((lc) => lc.id !== loadingId);
+	appState.addChat(chatData);
+
+	// Start background indexing
+	startIndexWorker(chatData);
+
+	return { validationPassed: true };
+}
+
 async function loadChatFromBuffer(
 	buffer: ArrayBuffer,
 	fileName: string,
@@ -1007,72 +1176,73 @@ async function loadChatFromBuffer(
 			fileName,
 		);
 
-		// If restoring, validate the file before touching any app state - a
-		// mismatched file must never be added/displayed as if it were correct
-		let validationPassed = true;
-		if (restoredMetadata) {
-			const validation = validateRestoredFile(chatData, restoredMetadata);
-			if (!validation.valid) {
-				console.warn('Restored file validation failed:', validation.reasons);
-				loadingChats = loadingChats.filter((lc) => lc.id !== loadingId);
-				return { validationPassed: false };
-			}
-
-			// Restore bookmarks
-			if (restoredMetadata.bookmarks.length > 0) {
-				bookmarksState.importBookmarks({
-					version: 1,
-					exportedAt: restoredMetadata.savedAt,
-					bookmarks: restoredMetadata.bookmarks,
-				});
-			}
-
-			// Restore transcriptions
-			if (Object.keys(restoredMetadata.transcriptions).length > 0) {
-				setTranscriptionsForChat(restoredMetadata.transcriptions);
-			}
-
-			// Restore settings
-			if (restoredMetadata.settings.language) {
-				languageByChat.set(chatData.title, restoredMetadata.settings.language);
-				languageByChat = new Map(languageByChat);
-			}
-			if (restoredMetadata.settings.autoLoadMedia !== undefined) {
-				autoLoadMediaByChat.set(
-					chatData.title,
-					restoredMetadata.settings.autoLoadMedia,
-				);
-				autoLoadMediaByChat = new Map(autoLoadMediaByChat);
-			}
-			if (restoredMetadata.settings.perspective !== undefined) {
-				perspectiveByChat.set(
-					chatData.title,
-					restoredMetadata.settings.perspective,
-				);
-				perspectiveByChat = new Map(perspectiveByChat);
-			}
-			if (restoredMetadata.settings.locked !== undefined) {
-				lockedByChat.set(chatData.title, restoredMetadata.settings.locked);
-				lockedByChat = new Map(lockedByChat);
-			}
-		}
-
-		// Remove loading placeholder and add actual chat
-		loadingChats = loadingChats.filter((lc) => lc.id !== loadingId);
-		appState.addChat(chatData);
+		const outcome = await applyRestoredChatData(
+			chatData,
+			loadingId,
+			restoredMetadata,
+		);
+		if (!outcome.validationPassed) return outcome;
 
 		// Store file reference for persistence
 		if (filePath) {
 			chatFileReferences.set(chatData.title, { file: null, filePath });
 		}
 
-		// Start background indexing
-		startIndexWorker(chatData);
-
-		return { validationPassed };
+		return outcome;
 	} catch (error) {
 		console.error('Error parsing file:', error);
 		// Remove loading placeholder on error
+		loadingChats = loadingChats.filter((lc) => lc.id !== loadingId);
+		throw error;
+	}
+}
+
+async function loadChatFromExtraction(
+	extracted: {
+		extractionDir: string;
+		extractionId: string;
+		originalFileName?: string;
+		entries: { name: string; path: string; size: number }[];
+	},
+	restoredMetadata?: PersistedChatMetadata,
+): Promise<{ validationPassed: boolean }> {
+	const loadingId = crypto.randomUUID();
+	const displayName = sanitizeFilename(
+		extracted.originalFileName || restoredMetadata?.fileName || 'chat.zip',
+	);
+
+	loadingChats = [
+		...loadingChats,
+		{
+			id: loadingId,
+			filename: displayName,
+			progress: 0,
+			stage: 'extracting',
+		},
+	];
+
+	try {
+		const chatData: ChatData = await parseExtractedChat(
+			extracted,
+			makeProgressCallback(loadingId),
+		);
+
+		const outcome = await applyRestoredChatData(
+			chatData,
+			loadingId,
+			restoredMetadata,
+		);
+		if (!outcome.validationPassed) return outcome;
+
+		chatFileReferences.set(chatData.title, {
+			file: null,
+			extractionDir: extracted.extractionDir,
+			extractionId: extracted.extractionId,
+		});
+
+		return outcome;
+	} catch (error) {
+		console.error('Error parsing extracted chat:', error);
 		loadingChats = loadingChats.filter((lc) => lc.id !== loadingId);
 		throw error;
 	}
@@ -1104,6 +1274,12 @@ async function rememberChat(chatTitle: string, silent = false) {
 			},
 			fileRef?.filePath,
 			fileHandle,
+			fileRef?.extractionDir && fileRef?.extractionId
+				? {
+						extractionDir: fileRef.extractionDir,
+						extractionId: fileRef.extractionId,
+					}
+				: undefined,
 		);
 
 		if (fileRef) {

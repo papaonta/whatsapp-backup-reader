@@ -4,7 +4,6 @@
 interface FileResult {
 	path: string;
 	name: string;
-	buffer: ArrayBuffer;
 }
 
 interface ReadResult {
@@ -32,6 +31,33 @@ interface ReadDirResult {
 	error?: string;
 }
 
+interface ExtractionEntry {
+	name: string;
+	path: string;
+	size: number;
+}
+
+interface ExtractionResult {
+	success: boolean;
+	extractionDir?: string;
+	originalFileName?: string;
+	entries?: ExtractionEntry[];
+	error?: string;
+}
+
+interface ExtractionProgress {
+	extractionId: string;
+	filesProcessed: number;
+	totalFiles: number;
+	progress: number;
+}
+
+interface ExtractionPruneResult {
+	success: boolean;
+	removed?: string[];
+	error?: string;
+}
+
 interface ElectronAPI {
 	openFile: () => Promise<FileResult | null>;
 	openFolder: () => Promise<string | null>;
@@ -49,6 +75,20 @@ interface ElectronAPI {
 		onStatus: (
 			callback: (data: { event: string; data?: unknown }) => void,
 		) => () => void;
+	};
+	extraction?: {
+		extract: (
+			zipFilePath: string,
+			extractionId: string,
+		) => Promise<ExtractionResult>;
+		loadManifest: (extractionDir: string) => Promise<ExtractionResult>;
+		deleteDir: (
+			extractionDir: string,
+		) => Promise<{ success: boolean; error?: string }>;
+		pruneOrphans: (
+			keepExtractionIds: string[],
+		) => Promise<ExtractionPruneResult>;
+		onProgress: (callback: (data: ExtractionProgress) => void) => () => void;
 	};
 }
 

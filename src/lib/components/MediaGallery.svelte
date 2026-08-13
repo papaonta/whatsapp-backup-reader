@@ -12,7 +12,7 @@ import { triggerDownload } from '$lib/helpers/download';
 import { isMobileViewport } from '$lib/helpers/responsive';
 import * as m from '$lib/paraglide/messages';
 import { getLocale } from '$lib/paraglide/runtime';
-import { loadMediaFile } from '$lib/parser';
+import { getMediaBytes, loadMediaFile, mediaFileHasSource } from '$lib/parser';
 import { appState } from '$lib/state.svelte';
 import Dropdown from './Dropdown.svelte';
 import DropdownList from './DropdownList.svelte';
@@ -158,12 +158,11 @@ async function downloadSelected(): Promise<void> {
 
 		for (let i = 0; i < selected.length; i++) {
 			const item = selected[i];
-			const entry = item.media._zipEntry;
-			if (!entry) continue;
+			if (!mediaFileHasSource(item.media)) continue;
 
 			const filename = makeUniqueFilename(item.name, seenNames);
 			const folder = zip.folder(item.type) ?? zip;
-			const arrayBuffer = await entry.async('arraybuffer');
+			const arrayBuffer = await getMediaBytes(item.media);
 			folder.file(filename, arrayBuffer);
 
 			downloadProgress = Math.round(((i + 1) / total) * 100);

@@ -21,7 +21,13 @@ export type {
 } from './zip-parser';
 export {
 	cleanupMediaUrls,
+	deriveChatTitle,
+	getExtractedMediaUrl,
+	getMediaBytes,
 	loadMediaFile,
+	matchMediaToMessages,
+	mediaFileHasSource,
+	parseExtractedChat,
 	parseZipFile,
 	preloadMedia,
 	readFileAsArrayBuffer,

@@ -17,6 +17,7 @@ import {
 	type VideoFrameCache,
 } from '$lib/helpers/video-thumbnails';
 import { getLocale } from '$lib/paraglide/runtime';
+import { getMediaBytes, mediaFileHasSource } from '$lib/parser';
 import Icon from './Icon.svelte';
 
 interface Props {
@@ -116,11 +117,10 @@ async function loadVideoFrames(): Promise<void> {
 }
 
 async function loadMediaBlob(): Promise<Blob> {
-	if (!item.media._zipEntry) {
-		throw new Error('No ZIP entry for media file');
+	if (!mediaFileHasSource(item.media)) {
+		throw new Error('No source for media file');
 	}
-	const blob = await item.media._zipEntry.async('blob');
-	return blob;
+	return new Blob([await getMediaBytes(item.media)]);
 }
 
 function handleVideoMouseEnter(): void {
