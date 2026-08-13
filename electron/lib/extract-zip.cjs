@@ -2,7 +2,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { Readable } = require('node:stream');
 const { pipeline } = require('node:stream/promises');
-const yauzl = require('yauzl');
+const yauzl = require('yauzl-promise');
 
 const EXTRACTION_ROOT_NAME = 'extracted-chats';
 const MEDIA_DIR_NAME = 'media';
@@ -39,6 +39,13 @@ async function resolveWithinRoot(root, candidate) {
  * logic that already parses in-memory ZIPs, to avoid maintaining two
  * implementations of that (non-trivial, still-evolving) heuristic.
  *
+ * Uses yauzl-promise rather than plain yauzl: it has an explicit
+ * supportMacArchive option (on by default) for the faulty-but-common ZIP64
+ * structure that iOS/macOS's own zip-writing code produces once an archive
+ * or entry crosses 4GiB (see https://github.com/thejoshwolfe/yauzl/issues/69)
+ * - which is exactly what WhatsApp's own multi-GB export ZIPs hit. Plain
+ * yauzl's maintainer has explicitly declined to support these.
+ *
  * @param {{ zipPath: string, extractionId: string, extractionRoot: string,
  *   onProgress?: (p: { filesProcessed: number, totalFiles: number,
  *     bytesProcessed: number, totalBytes: number, progress: number }) => void,
@@ -68,18 +75,22 @@ async function extractZipToDirectory({
 		if (signal?.aborted) throw new Error('Extraction cancelled');
 	};
 
+	let zip;
 	try {
-		const zipfile = await new Promise((resolve, reject) => {
-			yauzl.open(zipPath, { lazyEntries: true, autoClose: true }, (err, zf) => {
-				if (err) reject(err);
-				else resolve(zf);
-			});
-		});
+		// decodeStrings: false so we control filename decoding ourselves
+		// (always UTF-8, matching what JSZip does unconditionally for the
+		// in-memory pipeline) instead of yauzl-promise's spec-accurate but
+		// flag-dependent CP437-unless-UTF8-bit-or-Unicode-extra-field
+		// behavior, which mojibakes real-world zips (including WhatsApp
+		// exports) that have UTF-8 names but don't set that bit. Filename
+		// validation (zip-slip protection) is done explicitly below instead
+		// of relying on the automatic validation decodeStrings would give.
+		zip = await yauzl.open(zipPath, { decodeStrings: false });
 
-		// yauzl reads the central directory on open, so entryCount (an
-		// upper bound including directory entries) is known upfront without
-		// a separate metadata pass.
-		const totalFiles = zipfile.entryCount;
+		// entryCount is known upfront from the central directory (may be an
+		// underestimate for Mac Archive Utility zips - entryCountIsCertain
+		// reflects that - but is still a reasonable progress denominator).
+		const totalFiles = zip.entryCount;
 		const entries = [];
 		let filesProcessed = 0;
 		let lastProgressEmit = 0;
@@ -95,63 +106,43 @@ async function extractZipToDirectory({
 			});
 		};
 
-		await new Promise((resolve, reject) => {
-			zipfile.on('error', reject);
-			zipfile.on('end', resolve);
-			zipfile.on('entry', (entry) => {
-				(async () => {
-					throwIfAborted();
+		for await (const entry of zip) {
+			throwIfAborted();
 
-					if (/\/$/.test(entry.fileName)) {
-						zipfile.readEntry();
-						return;
-					}
+			const fileNameBuffer = entry.filename;
+			const fileName = fileNameBuffer.toString('utf8');
 
-					// yauzl already runs every entry's fileName through
-					// validateFileName() (since decodeStrings defaults to true)
-					// before it ever emits 'entry', aborting the whole read with
-					// an error on the first invalid name - so no per-entry check
-					// is needed here. resolveWithinRoot() below is the
-					// independent second layer guarding the actual write path.
-					//
-					// entry.fileName itself is decoded per the zip's UTF-8 flag,
-					// which many real-world zips (including WhatsApp exports
-					// with emoji in filenames) leave unset despite the bytes
-					// actually being UTF-8 - decoding fileNameRaw as UTF-8
-					// ourselves matches what JSZip does unconditionally
-					// (loadOptions.decodeFileName defaults to utf8decode) and
-					// avoids mojibake for those files.
-					const fileName = entry.fileNameRaw.toString('utf8');
+			if (fileName.endsWith('/')) continue;
 
-					const destPath = path.join(mediaDir, fileName);
-					const resolvedDest = await resolveWithinRoot(mediaDir, destPath);
-					await fs.promises.mkdir(path.dirname(resolvedDest), {
-						recursive: true,
-					});
+			// Explicit validation since decodeStrings:false skips the
+			// library's automatic version. resolveWithinRoot() below is the
+			// independent second layer guarding the actual write path.
+			yauzl.validateFilename(fileName);
 
-					const readStream = await new Promise((res, rej) => {
-						zipfile.openReadStream(entry, (err, rs) => {
-							if (err) rej(err);
-							else res(rs);
-						});
-					});
-					const writeStream = fs.createWriteStream(resolvedDest);
-					await pipeline(readStream, writeStream);
-
-					entries.push({
-						name: fileName.split('/').pop() || fileName,
-						path: fileName,
-						size: entry.uncompressedSize || 0,
-					});
-
-					filesProcessed++;
-					emitProgress(false);
-
-					zipfile.readEntry();
-				})().catch(reject);
+			const destPath = path.join(mediaDir, fileName);
+			const resolvedDest = await resolveWithinRoot(mediaDir, destPath);
+			await fs.promises.mkdir(path.dirname(resolvedDest), {
+				recursive: true,
 			});
-			zipfile.readEntry();
-		});
+
+			const readStream = await entry.openReadStream();
+			const writeStream = fs.createWriteStream(resolvedDest);
+			await pipeline(readStream, writeStream);
+
+			entries.push({
+				name: fileName.split('/').pop() || fileName,
+				path: fileName,
+				// Read after openReadStream() completes, not before: for a
+				// possibly-inaccurate Mac Archive Utility zip, uncompressedSize
+				// is only corrected once the entry has actually been streamed
+				// through in full (see uncompressedSizeIsCertain in the
+				// yauzl-promise docs).
+				size: entry.uncompressedSize || 0,
+			});
+
+			filesProcessed++;
+			emitProgress(false);
+		}
 
 		emitProgress(true);
 
@@ -176,6 +167,8 @@ async function extractZipToDirectory({
 			.rm(extractionDir, { recursive: true, force: true })
 			.catch(() => {});
 		throw error;
+	} finally {
+		await zip?.close().catch(() => {});
 	}
 }
 
