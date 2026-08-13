@@ -1,8 +1,13 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { Readable } = require('node:stream');
-const { pipeline } = require('node:stream/promises');
-const yauzl = require('yauzl-promise');
+const {
+	locateCentralDirectory,
+	readCentralDirectoryEntries,
+	recoverOrphanEntries,
+	readLocalFileHeader,
+	extractEntryToFile,
+} = require('./zip-reader.cjs');
 
 const EXTRACTION_ROOT_NAME = 'extracted-chats';
 const MEDIA_DIR_NAME = 'media';
@@ -39,12 +44,17 @@ async function resolveWithinRoot(root, candidate) {
  * logic that already parses in-memory ZIPs, to avoid maintaining two
  * implementations of that (non-trivial, still-evolving) heuristic.
  *
- * Uses yauzl-promise rather than plain yauzl: it has an explicit
- * supportMacArchive option (on by default) for the faulty-but-common ZIP64
- * structure that iOS/macOS's own zip-writing code produces once an archive
- * or entry crosses 4GiB (see https://github.com/thejoshwolfe/yauzl/issues/69)
- * - which is exactly what WhatsApp's own multi-GB export ZIPs hit. Plain
- * yauzl's maintainer has explicitly declined to support these.
+ * Uses the custom reader in zip-reader.cjs rather than a general-purpose
+ * zip library: real WhatsApp iOS exports of large chats have been found
+ * with a declared entry count higher than what's actually in the central
+ * directory, and the "missing" entries - including the chat transcript
+ * itself - usually still have their data intact in the archive body with
+ * just their central directory record missing. Every library tried
+ * (yauzl, yauzl-promise, unzipper) treats this as fatal corruption and
+ * gives up; zip-reader.cjs's central-directory-size-driven walk plus
+ * orphan-recovery pass reads every real entry, including recovering the
+ * ones libraries would silently drop the import over. See zip-reader.cjs's
+ * module docstring for the full diagnosis.
  *
  * @param {{ zipPath: string, extractionId: string, extractionRoot: string,
  *   onProgress?: (p: { filesProcessed: number, totalFiles: number,
@@ -75,22 +85,24 @@ async function extractZipToDirectory({
 		if (signal?.aborted) throw new Error('Extraction cancelled');
 	};
 
-	let zip;
-	try {
-		// decodeStrings: false so we control filename decoding ourselves
-		// (always UTF-8, matching what JSZip does unconditionally for the
-		// in-memory pipeline) instead of yauzl-promise's spec-accurate but
-		// flag-dependent CP437-unless-UTF8-bit-or-Unicode-extra-field
-		// behavior, which mojibakes real-world zips (including WhatsApp
-		// exports) that have UTF-8 names but don't set that bit. Filename
-		// validation (zip-slip protection) is done explicitly below instead
-		// of relying on the automatic validation decodeStrings would give.
-		zip = await yauzl.open(zipPath, { decodeStrings: false });
+	const resolveDestPath = async (fileName) => {
+		const destPath = path.join(mediaDir, fileName);
+		const resolvedDest = await resolveWithinRoot(mediaDir, destPath);
+		await fs.promises.mkdir(path.dirname(resolvedDest), { recursive: true });
+		return resolvedDest;
+	};
 
-		// entryCount is known upfront from the central directory (may be an
-		// underestimate for Mac Archive Utility zips - entryCountIsCertain
-		// reflects that - but is still a reasonable progress denominator).
-		const totalFiles = zip.entryCount;
+	let fileHandle;
+	try {
+		fileHandle = await fs.promises.open(zipPath, 'r');
+		const stat = await fileHandle.stat();
+		const location = await locateCentralDirectory(fileHandle, stat.size);
+
+		// declaredEntryCount is only a hint for the progress denominator - it
+		// can be (and, for the exact bug this reader exists to work around,
+		// sometimes is) inaccurate. Progress just degrades to a less precise
+		// percentage if so; it doesn't affect correctness.
+		const totalFiles = Math.max(location.declaredEntryCount, 1);
 		const entries = [];
 		let filesProcessed = 0;
 		let lastProgressEmit = 0;
@@ -102,46 +114,60 @@ async function extractZipToDirectory({
 			onProgress?.({
 				filesProcessed,
 				totalFiles,
-				progress: totalFiles > 0 ? (filesProcessed / totalFiles) * 100 : 0,
+				progress: Math.min(100, (filesProcessed / totalFiles) * 100),
 			});
 		};
 
-		for await (const entry of zip) {
+		let lastEntry = null;
+		for await (const entry of readCentralDirectoryEntries(
+			fileHandle,
+			location,
+		)) {
 			throwIfAborted();
+			if (entry.isDirectory) continue;
 
-			const fileNameBuffer = entry.filename;
-			const fileName = fileNameBuffer.toString('utf8');
-
-			if (fileName.endsWith('/')) continue;
-
-			// Explicit validation since decodeStrings:false skips the
-			// library's automatic version. resolveWithinRoot() below is the
-			// independent second layer guarding the actual write path.
-			yauzl.validateFilename(fileName);
-
-			const destPath = path.join(mediaDir, fileName);
-			const resolvedDest = await resolveWithinRoot(mediaDir, destPath);
-			await fs.promises.mkdir(path.dirname(resolvedDest), {
-				recursive: true,
-			});
-
-			const readStream = await entry.openReadStream();
-			const writeStream = fs.createWriteStream(resolvedDest);
-			await pipeline(readStream, writeStream);
+			const resolvedDest = await resolveDestPath(entry.fileName);
+			await extractEntryToFile(fileHandle, zipPath, entry, resolvedDest);
 
 			entries.push({
-				name: fileName.split('/').pop() || fileName,
-				path: fileName,
-				// Read after openReadStream() completes, not before: for a
-				// possibly-inaccurate Mac Archive Utility zip, uncompressedSize
-				// is only corrected once the entry has actually been streamed
-				// through in full (see uncompressedSizeIsCertain in the
-				// yauzl-promise docs).
-				size: entry.uncompressedSize || 0,
+				name: entry.fileName.split('/').pop() || entry.fileName,
+				path: entry.fileName,
+				size: entry.uncompressedSize,
 			});
+
+			if (!lastEntry || entry.localHeaderOffset > lastEntry.localHeaderOffset) {
+				lastEntry = entry;
+			}
 
 			filesProcessed++;
 			emitProgress(false);
+		}
+
+		// Recover entries whose central directory record is missing but
+		// whose data is still present in the gap between the last
+		// central-directory-listed entry and where the central directory
+		// begins (see zip-reader.cjs). No-op (gapStart === gapEnd) for
+		// well-formed zips with no such gap.
+		if (lastEntry) {
+			const { dataStart } = await readLocalFileHeader(
+				fileHandle,
+				lastEntry.localHeaderOffset,
+			);
+			const gapStart = dataStart + lastEntry.compressedSize;
+			const gapEnd = location.centralDirectoryOffset;
+
+			const recovered = await recoverOrphanEntries(
+				fileHandle,
+				zipPath,
+				gapStart,
+				gapEnd,
+				resolveDestPath,
+				() => {
+					filesProcessed++;
+					emitProgress(false);
+				},
+			);
+			entries.push(...recovered);
 		}
 
 		emitProgress(true);
@@ -168,7 +194,7 @@ async function extractZipToDirectory({
 			.catch(() => {});
 		throw error;
 	} finally {
-		await zip?.close().catch(() => {});
+		await fileHandle?.close().catch(() => {});
 	}
 }
 
