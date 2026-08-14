@@ -345,6 +345,7 @@
   "merge_chats_button": "Merge",
   "merge_chats_cancel": "Cancel",
   "merge_chats_success": "Merged {count} chats: {newCount} new message{newPlural}, {duplicateCount} duplicate{duplicatePlural} skipped",
+  "merge_chats_save_failed": "Failed to save the merged chat - nothing was changed, your original chats are untouched.",
   "persistence_reselect_browse_hint": "Tip: drag and drop the file above instead of using Browse, so it's remembered without asking again next time.",
   "persistence_reselect_mismatch": "That file doesn't match \"{chatTitle}\" - please choose the correct export."
 }

@@ -66,6 +66,11 @@ interface ChatTextPeekResult {
 	error?: string;
 }
 
+interface MergedChatMediaEntry {
+	relPath: string;
+	bytes: ArrayBuffer;
+}
+
 interface ElectronAPI {
 	openFile: () => Promise<FileResult | null>;
 	openFolder: () => Promise<string | null>;
@@ -90,6 +95,12 @@ interface ElectronAPI {
 			extractionId: string,
 		) => Promise<ExtractionResult>;
 		peekChatText: (zipFilePath: string) => Promise<ChatTextPeekResult>;
+		createMergedChat: (
+			extractionId: string,
+			chatFileName: string,
+			chatText: string,
+			mediaEntries: MergedChatMediaEntry[],
+		) => Promise<ExtractionResult>;
 		loadManifest: (extractionDir: string) => Promise<ExtractionResult>;
 		deleteDir: (
 			extractionDir: string,

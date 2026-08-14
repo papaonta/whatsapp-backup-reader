@@ -207,6 +207,87 @@ async function extractZipToDirectory({
 }
 
 /**
+ * Writes a self-contained extraction folder from already-in-memory data
+ * instead of a zip - used for a merged chat (see src/routes/+page.svelte's
+ * handleMergeChats), which has no single source zip of its own. Mirrors
+ * extractZipToDirectory's on-disk shape and manifest exactly, so the
+ * result can be fed straight into the renderer's normal
+ * parseExtractedChat/restoreChat paths with no special-casing.
+ * @param {{ extractionRoot: string, extractionId: string, chatFileName: string,
+ *   chatText: string, mediaEntries: { relPath: string, bytes: ArrayBuffer | Buffer }[] }} params
+ * @returns {Promise<{ extractionDir: string, originalFileName: string,
+ *   entries: { name: string, path: string, size: number }[] }>}
+ */
+async function createMergedChatFolder({
+	extractionRoot,
+	extractionId,
+	chatFileName,
+	chatText,
+	mediaEntries,
+}) {
+	if (!isValidExtractionId(extractionId)) {
+		throw new Error('Invalid extraction id');
+	}
+
+	const extractionDir = await resolveWithinRoot(
+		extractionRoot,
+		path.join(extractionRoot, extractionId),
+	);
+	const mediaDir = path.join(extractionDir, MEDIA_DIR_NAME);
+	await fs.promises.mkdir(mediaDir, { recursive: true });
+
+	try {
+		const entries = [];
+
+		const chatDestPath = await resolveWithinRoot(
+			mediaDir,
+			path.join(mediaDir, chatFileName),
+		);
+		await fs.promises.writeFile(chatDestPath, chatText, 'utf-8');
+		entries.push({
+			name: chatFileName,
+			path: chatFileName,
+			size: Buffer.byteLength(chatText, 'utf-8'),
+		});
+
+		for (const { relPath, bytes } of mediaEntries) {
+			const destPath = path.join(mediaDir, relPath);
+			const resolvedDest = await resolveWithinRoot(mediaDir, destPath);
+			await fs.promises.mkdir(path.dirname(resolvedDest), { recursive: true });
+			const buffer = Buffer.isBuffer(bytes) ? bytes : Buffer.from(bytes);
+			await fs.promises.writeFile(resolvedDest, buffer);
+			entries.push({
+				name: relPath.split('/').pop() || relPath,
+				path: relPath,
+				size: buffer.byteLength,
+			});
+		}
+
+		const manifest = {
+			originalFileName: chatFileName,
+			entries,
+			extractedAt: new Date().toISOString(),
+		};
+		await fs.promises.writeFile(
+			path.join(extractionDir, MANIFEST_FILENAME),
+			JSON.stringify(manifest),
+			'utf-8',
+		);
+
+		return {
+			extractionDir,
+			originalFileName: manifest.originalFileName,
+			entries,
+		};
+	} catch (error) {
+		await fs.promises
+			.rm(extractionDir, { recursive: true, force: true })
+			.catch(() => {});
+		throw error;
+	}
+}
+
+/**
  * Reads just the chat transcript text entry out of a ZIP, without running
  * the full extraction - lets the renderer detect "this looks like a chat
  * you've already imported" before committing to a multi-minute extraction
@@ -456,6 +537,7 @@ module.exports = {
 	resolveMediaFilePath,
 	buildMediaFileResponse,
 	extractZipToDirectory,
+	createMergedChatFolder,
 	peekChatEntry,
 	loadManifest,
 	deleteExtractionDir,

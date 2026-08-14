@@ -61,6 +61,8 @@ import * as m from '$lib/paraglide/messages';
 import { getLocale } from '$lib/paraglide/runtime';
 import {
 	checkForDuplicateImport,
+	getMediaBytes,
+	mediaFileHasSource,
 	parseExtractedChat,
 	parseZipFile,
 	readFileAsArrayBuffer,
@@ -894,6 +896,61 @@ async function handleMergeChats(otherChats: ChatData[], mergedTitle: string) {
 	const newCount = merged.messageCount - currentChat.messageCount;
 	const duplicateCount = totalSourceMessages - merged.messageCount;
 
+	// Electron: write the merged result to its own self-contained
+	// extraction folder before touching any session/bookmark/persisted
+	// state, so a merged chat survives a restart like every other chat
+	// does (it has no single source zip of its own to fall back to on
+	// restore otherwise). If this fails, bail out with everything
+	// untouched - the source chats stay exactly as they were and can be
+	// re-merged.
+	let chatData: ChatData = merged;
+	if (window.electronAPI?.isElectron && window.electronAPI.extraction) {
+		try {
+			// ChatMessage.rawLine already holds each message's verbatim
+			// source line(s) (chat-parser.ts), so the merged transcript
+			// needs no reverse-parser - just the already-sorted messages'
+			// original lines, joined back up.
+			const chatText = merged.messages.map((msg) => msg.rawLine).join('\n');
+			// A non-generic filename round-trips back to exactly
+			// mergedTitle through deriveChatTitle + parseChat's own
+			// cleanup (see cuddly-brewing-breeze.md) - naming it
+			// "_chat.txt" would instead trip deriveChatTitle's iOS-generic
+			// handling and produce a different title.
+			const chatFileName = `WhatsApp Chat with ${mergedTitle}.txt`;
+
+			const mediaEntries: { relPath: string; bytes: ArrayBuffer }[] = [];
+			for (const media of merged.mediaFiles) {
+				if (!mediaFileHasSource(media)) continue;
+				mediaEntries.push({
+					relPath: media.path,
+					bytes: await getMediaBytes(media),
+				});
+			}
+
+			const newExtractionId = crypto.randomUUID();
+			const result = await window.electronAPI.extraction.createMergedChat(
+				newExtractionId,
+				chatFileName,
+				chatText,
+				mediaEntries,
+			);
+			if (!result.success || !result.entries || !result.extractionDir) {
+				throw new Error(result.error || m.error_parse_failed());
+			}
+
+			chatData = await parseExtractedChat({
+				extractionDir: result.extractionDir,
+				extractionId: newExtractionId,
+				originalFileName: result.originalFileName,
+				entries: result.entries,
+			});
+		} catch (e) {
+			console.error('Failed to persist merged chat:', e);
+			showToast(m.merge_chats_save_failed(), 'error');
+			return;
+		}
+	}
+
 	// Remap bookmarks from every source chat onto the merged message IDs -
 	// message IDs are regenerated during merge, so old messageIds no longer
 	// point anywhere. Bookmarks are keyed by chat title app-wide, so if two
@@ -914,7 +971,7 @@ async function handleMergeChats(otherChats: ChatData[], mergedTitle: string) {
 		const sourceBookmarks = bookmarksState.getBookmarksForChat(sourceTitle);
 		for (const bookmark of sourceBookmarks) {
 			const previewStart = bookmark.messagePreview.replace(/\.\.\.$/, '');
-			const match = merged.messages.find(
+			const match = chatData.messages.find(
 				(msg) =>
 					msg.timestamp.toISOString() === bookmark.messageTimestamp &&
 					msg.sender === bookmark.sender &&
@@ -946,18 +1003,40 @@ async function handleMergeChats(otherChats: ChatData[], mergedTitle: string) {
 		appState.removeChat(index);
 	}
 
-	appState.addChat(merged);
-	startIndexWorker(merged);
+	appState.addChat(chatData);
+	startIndexWorker(chatData);
+
+	// Persist the merged chat itself (Electron only - matches the
+	// extractionDir/extractionId set above) before removing any source's
+	// persisted record below, so a failure here never loses the sources.
+	if (window.electronAPI?.isElectron && chatData !== merged) {
+		chatFileReferences.set(chatData.title, {
+			file: null,
+			extractionDir: chatData.extractionDir,
+			extractionId: chatData.extractionId,
+		});
+		await persistChat(chatData.title);
+	}
 
 	// Clean up persisted records and per-chat maps for absorbed source
-	// titles (the merged chat keeps mergedTitle going forward)
+	// titles. Deletes every persisted record matching a source title, even
+	// one that happens to share mergedTitle - a title match alone doesn't
+	// get it naturally replaced by savePersistedChat's own dedup, since
+	// that also requires real content similarity (message count/timestamps)
+	// a merge deliberately changes, so a stale pre-merge record would
+	// otherwise survive forever alongside the new merged one. The record
+	// persistChat just created is protected explicitly by ID, not by title.
+	const newPersistedId = chatFileReferences.get(chatData.title)?.persistedId;
+	const allPersistedNow = await getPersistedChats();
 	for (const title of sourceTitles) {
-		if (title === mergedTitle) continue;
-		const persistedChat = await findPersistedChatByTitle(title);
-		if (persistedChat) {
-			await removePersistedChat(persistedChat.id);
+		for (const record of allPersistedNow) {
+			if (record.chatTitle !== title || record.id === newPersistedId) continue;
+			await removePersistedChat(record.id);
 		}
-		cleanUpChatState(title);
+		// Don't wipe the merged chat's own just-configured state.
+		if (title !== mergedTitle) {
+			cleanUpChatState(title);
+		}
 	}
 
 	showMergeChatsModal = false;

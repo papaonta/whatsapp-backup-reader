@@ -14,6 +14,7 @@ const {
 	getExtractionRoot,
 	isValidExtractionId,
 	extractZipToDirectory,
+	createMergedChatFolder,
 	peekChatEntry,
 	loadManifest: loadExtractionManifest,
 	deleteExtractionDir,
@@ -381,6 +382,54 @@ ipcMain.handle('extraction:peekChatText', async (_event, zipFilePath) => {
 		};
 	}
 });
+
+ipcMain.handle(
+	'extraction:createMergedChat',
+	async (_event, extractionId, chatFileName, chatText, mediaEntries) => {
+		try {
+			if (!isValidExtractionId(extractionId)) {
+				throw new Error('Invalid extraction id');
+			}
+			if (
+				typeof chatFileName !== 'string' ||
+				chatFileName.length === 0 ||
+				chatFileName.split(/[/\\]+/).includes('..')
+			) {
+				throw new Error('Invalid chat file name');
+			}
+			if (typeof chatText !== 'string') {
+				throw new Error('Invalid chat text');
+			}
+			if (!Array.isArray(mediaEntries)) {
+				throw new Error('Invalid media entries');
+			}
+			for (const entry of mediaEntries) {
+				if (
+					typeof entry?.relPath !== 'string' ||
+					entry.relPath.length === 0 ||
+					entry.relPath.split(/[/\\]+/).includes('..')
+				) {
+					throw new Error('Invalid media entry path');
+				}
+			}
+
+			const result = await createMergedChatFolder({
+				extractionRoot: getExtractionRoot(app),
+				extractionId,
+				chatFileName,
+				chatText,
+				mediaEntries,
+			});
+
+			return { success: true, ...result };
+		} catch (error) {
+			return {
+				success: false,
+				error: error instanceof Error ? error.message : String(error),
+			};
+		}
+	},
+);
 
 ipcMain.handle('extraction:loadManifest', async (_event, extractionDir) => {
 	try {

@@ -26,6 +26,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
 			ipcRenderer.invoke('extraction:extract', zipFilePath, extractionId),
 		peekChatText: (zipFilePath) =>
 			ipcRenderer.invoke('extraction:peekChatText', zipFilePath),
+		createMergedChat: (extractionId, chatFileName, chatText, mediaEntries) =>
+			ipcRenderer.invoke(
+				'extraction:createMergedChat',
+				extractionId,
+				chatFileName,
+				chatText,
+				mediaEntries,
+			),
 		loadManifest: (extractionDir) =>
 			ipcRenderer.invoke('extraction:loadManifest', extractionDir),
 		deleteDir: (extractionDir) =>
