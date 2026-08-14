@@ -1,3 +1,15 @@
+<script module lang="ts">
+// Survives +page.svelte being torn down and remounted (the app-lock gate
+// in +layout.svelte swaps this whole route out for <AppLockGate> and back
+// via an {#if}, which fully destroys and recreates component state on
+// every lock/unlock - a plain instance-scoped flag would reset to false
+// each time and re-run the "restore everything" effect below, appending
+// a duplicate of every already-open chat. Module scope only evaluates
+// once per page load, not per mount, so this actually means "once per
+// app launch" like the effect's own comment already promises.
+let persistenceChecked = false;
+</script>
+
 <script lang="ts">
 import { tick } from 'svelte';
 import { browser } from '$app/environment';
@@ -1053,7 +1065,8 @@ async function handleMergeChats(otherChats: ChatData[], mergedTitle: string) {
 
 // Check for persisted chats on app load (one-time) - every persisted chat
 // just always appears, no prompt (see cuddly-brewing-breeze.md's Fase 1).
-let persistenceChecked = false;
+// persistenceChecked is declared in the module script above - see its
+// comment for why it can't live here as a normal instance-scoped `let`.
 $effect(() => {
 	if (!browser || persistenceChecked) return;
 	persistenceChecked = true;
