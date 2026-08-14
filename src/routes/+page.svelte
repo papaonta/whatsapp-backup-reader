@@ -562,19 +562,31 @@ async function handleFilesSelected(
 				// a distinct title up front so it can never collide with the
 				// existing persisted/open chat (resolveUniqueChatTitle would
 				// otherwise treat genuinely-the-same content as "keep the title
-				// as-is", which is exactly what we're overriding here).
+				// as-is", which is exactly what we're overriding here). Includes
+				// the time (not just the date) so two "Import as New" imports
+				// done the same day can't collide on an identical suffix.
 				if (forceDistinctTitle) {
-					const shortDate = new Date().toLocaleDateString(getLocale(), {
-						month: 'short',
-						day: 'numeric',
-					});
-					chatData.title = `${chatData.title} (re-imported ${shortDate})`;
+					const now = new Date();
+					const stamp = `${now.toLocaleDateString(getLocale(), { month: 'short', day: 'numeric' })} ${now.toLocaleTimeString(getLocale(), { hour: '2-digit', minute: '2-digit' })}`;
+					chatData.title = `${chatData.title} (re-imported ${stamp})`;
 				}
 
 				// Guard against a different chat coincidentally deriving the same
 				// title as one already open - persistence is keyed by title, so a
 				// collision there would silently overwrite the other chat's data
 				chatData.title = resolveUniqueChatTitle(chatData, appState.chats);
+
+				// resolveUniqueChatTitle keeps the title unchanged when it
+				// judges this to genuinely be the same chat as one already
+				// open (e.g. "Update" on the duplicate-import prompt) - in
+				// that case replace the open copy instead of appending a
+				// visually-identical second one.
+				const openDuplicateIndex = appState.chats.findIndex(
+					(c) => c.title === chatData.title,
+				);
+				if (openDuplicateIndex !== -1) {
+					appState.removeChat(openDuplicateIndex);
+				}
 
 				appState.addChat(chatData);
 
@@ -1157,6 +1169,16 @@ async function applyRestoredChatData(
 			loadingChats = loadingChats.filter((lc) => lc.id !== loadingId);
 			return { validationPassed: false };
 		}
+
+		// Use the title that was actually saved/disambiguated at import time
+		// (e.g. a "(2)" or "(re-imported ...)" suffix), not whatever gets
+		// freshly re-derived from the raw chat content on every restore -
+		// otherwise two chats that were deliberately disambiguated collapse
+		// back to an identical title on every relaunch, since content-derived
+		// titles carry none of that history. Every by-title lookup below
+		// (chatFileReferences, the *ByChat maps, Delete Chat) depends on this
+		// matching what's actually in persisted storage.
+		chatData.title = restoredMetadata.chatTitle;
 
 		// Restore bookmarks
 		if (restoredMetadata.bookmarks.length > 0) {
