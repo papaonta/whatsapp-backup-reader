@@ -890,12 +890,19 @@ $effect(() => {
 			}
 			rememberedChats = new Set(rememberedChats);
 
-			// Check if user wants to skip the modal
+			persistedChatsToRestore = persisted;
+
+			// "Don't show this again" means skip the prompt, not skip
+			// restoring - the modal is the only path back to a remembered
+			// chat, so treating it as "never restore" would silently strand
+			// every remembered chat forever.
 			const dontShow = await getDontShowRestoreModal();
-			if (dontShow) return;
+			if (dontShow) {
+				await handleRestoreChats(persisted.map((chat) => chat.id));
+				return;
+			}
 
 			// Show restore modal
-			persistedChatsToRestore = persisted;
 			showRestoreSessionModal = true;
 		} catch (e) {
 			console.error('Failed to check for persisted chats:', e);
