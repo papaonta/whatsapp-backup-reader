@@ -1,13 +1,54 @@
 <script module lang="ts">
-// Survives +page.svelte being torn down and remounted (the app-lock gate
-// in +layout.svelte swaps this whole route out for <AppLockGate> and back
-// via an {#if}, which fully destroys and recreates component state on
-// every lock/unlock - a plain instance-scoped flag would reset to false
-// each time and re-run the "restore everything" effect below, appending
-// a duplicate of every already-open chat. Module scope only evaluates
-// once per page load, not per mount, so this actually means "once per
-// app launch" like the effect's own comment already promises.
+// Everything in this block survives +page.svelte being torn down and
+// remounted (the app-lock gate in +layout.svelte swaps this whole route
+// out for <AppLockGate> and back via an {#if}, which fully destroys and
+// recreates component state on every lock/unlock, not just re-renders
+// it). Module scope only evaluates once per page load, not per mount -
+// matches appState (a true module-singleton from state.svelte.ts, which
+// isn't reset by the remount either) instead of resetting to empty like
+// a plain instance-scoped `let`/`$state` would.
+//
+// persistenceChecked: makes the "restore every persisted chat" effect
+// below run once per app launch, not once per unlock - a plain
+// instance-scoped flag would reset to false each remount and re-run it in
+// full, appending a duplicate of every already-open chat on top of
+// appState.chats (which, being the singleton, is never reset).
 let persistenceChecked = false;
+
+// These all describe per-chat state for whatever's currently in
+// appState.chats - if *they* reset on remount while appState.chats
+// doesn't, a chat that was already open before a lock/unlock keeps
+// showing (no duplication - fixed above), but "forgets" it was
+// locked/had a perspective/language/auto-load-media set, and
+// chatFileReferences (needed to re-save or re-open it) goes empty. This
+// was previously being invisibly repaired every remount by the very same
+// wasteful re-restore persistenceChecked now prevents - both bugs came
+// from the same underlying mismatch (some state surviving the remount,
+// some not), so both need to live at the same scope.
+let perspectiveByChat = $state<Map<string, string | null>>(new Map());
+let languageByChat = $state<Map<string, string>>(new Map());
+let autoLoadMediaByChat = $state<Map<string, boolean>>(new Map());
+let lockedByChat = $state<Map<string, boolean>>(new Map());
+// Chats unlocked (PIN entered) for the current session only - never
+// persisted, so every locked chat re-locks after a reload/restart (but,
+// per the above, should *not* re-lock just from an app lock/unlock).
+let unlockedThisSession = $state<Set<string>>(new Set());
+// chatTitle -> {file, filePath, fileHandle, persistedId, extractionDir,
+// extractionId} - mutated via .set()/.delete() without reassignment,
+// read imperatively rather than in reactive contexts.
+let chatFileReferences = $state<
+	Map<
+		string,
+		{
+			file: File | null;
+			filePath?: string;
+			fileHandle?: FileSystemFileHandle;
+			persistedId?: string;
+			extractionDir?: string;
+			extractionId?: string;
+		}
+	>
+>(new Map());
 </script>
 
 <script lang="ts">
@@ -208,20 +249,10 @@ $effect(() => {
 	}
 });
 
-// Store selected perspective per chat (chatTitle -> participant name or null for "None")
-let perspectiveByChat = $state<Map<string, string | null>>(new Map());
+// perspectiveByChat, languageByChat, autoLoadMediaByChat, lockedByChat,
+// unlockedThisSession are declared in the module script above - see its
+// comment for why they can't live here as normal instance-scoped $state.
 
-// Store transcription language per chat (chatTitle -> language code)
-let languageByChat = $state<Map<string, string>>(new Map());
-
-// Store auto-load media preference per chat (chatTitle -> enabled)
-let autoLoadMediaByChat = $state<Map<string, boolean>>(new Map());
-
-// Store chat-lock flag per chat (chatTitle -> locked)
-let lockedByChat = $state<Map<string, boolean>>(new Map());
-// Chats unlocked (PIN entered) for the current session only — never persisted,
-// so every locked chat re-locks after a reload/restart.
-let unlockedThisSession = $state<Set<string>>(new Set());
 // Pending PIN modal request; null when no lock modal should be shown.
 let lockPinRequest = $state<{
 	mode: 'setup' | 'unlock';
@@ -297,24 +328,8 @@ let duplicateImportResolve:
 	| ((choice: 'update' | 'new' | 'cancel') => void)
 	| null = null;
 
-// Track file references for persistence (chatTitle -> {file, filePath, fileHandle, persistedId})
-// Note: mutated via .set()/.delete() without reassignment — read imperatively, not in reactive contexts
-let chatFileReferences = $state<
-	Map<
-		string,
-		{
-			file: File | null;
-			filePath?: string;
-			fileHandle?: FileSystemFileHandle;
-			persistedId?: string;
-			// Set only for Electron chats imported via the streaming extraction
-			// pipeline (see electron/lib/extract-zip.cjs) instead of the
-			// in-memory JSZip pipeline.
-			extractionDir?: string;
-			extractionId?: string;
-		}
-	>
->(new Map());
+// chatFileReferences is declared in the module script above - see its
+// comment for why.
 
 // Get auto-load media setting for the current chat
 const autoLoadMediaForCurrentChat = $derived.by(() => {
