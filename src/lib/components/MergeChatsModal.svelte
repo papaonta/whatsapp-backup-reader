@@ -49,7 +49,7 @@ function handleMerge() {
 
 <Modal open={true} {onClose}>
 	<ModalHeader
-		icon="upload"
+		icon="merge"
 		title={m.merge_chats_modal_title()}
 		onClose={onClose}
 		closeLabel={m.close()}

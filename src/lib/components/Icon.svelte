@@ -24,6 +24,7 @@ export type IconName =
 	| 'file'
 	| 'download'
 	| 'upload'
+	| 'merge'
 	| 'photo'
 	| 'photo-simple'
 	| 'camera'
@@ -208,6 +209,11 @@ const icons: Record<
 	},
 	upload: {
 		path: 'M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12',
+		stroke: 'currentColor',
+		strokeWidth: '2',
+	},
+	merge: {
+		path: 'M6 4v3a3 3 0 003 3h3m6-6v3a3 3 0 01-3 3h-3m0 0v7',
 		stroke: 'currentColor',
 		strokeWidth: '2',
 	},

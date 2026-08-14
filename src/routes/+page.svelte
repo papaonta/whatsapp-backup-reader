@@ -1775,7 +1775,7 @@ async function handleForgotPin() {
 												showMergeChatsModal = true;
 											}}
 										>
-											<Icon name="upload" size="sm" />
+											<Icon name="merge" size="sm" />
 											<span>{m.merge_chats_action()}</span>
 										</ListItemButton>
 										{#if isViewingUnlockedLockedChat}
@@ -1864,7 +1864,7 @@ async function handleForgotPin() {
 								title={m.merge_chats_action()}
 								aria-label={m.merge_chats_action()}
 							>
-								<Icon name="upload" size="md" />
+								<Icon name="merge" size="md" />
 							</IconButton>
 							{#if isViewingUnlockedLockedChat}
 								<IconButton
