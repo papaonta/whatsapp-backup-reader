@@ -168,6 +168,23 @@ function getLastMessage(chat: ChatData): string {
 	if (last.isSystemMessage) return last.content;
 	return `${last.sender}: ${last.content}`;
 }
+
+// Display chats most-recent-activity-first (chat.endDate, already computed
+// at parse time as the last message's timestamp) rather than insertion
+// order - insertion order differs between a live import (appended to the
+// end) and a restart restore (sorted by when the record was last touched),
+// so neither was a reliable "most recent" ordering on its own. We sort a
+// list of indices rather than `chats` itself so onSelect/onDeleteRequest/
+// selectedIndex, which all address the original `chats` array, keep working
+// unchanged.
+const sortedChatIndices = $derived(
+	chats
+		.map((_, index) => index)
+		.sort(
+			(a, b) =>
+				(chats[b].endDate?.getTime() ?? 0) - (chats[a].endDate?.getTime() ?? 0),
+		),
+);
 </script>
 
 <div class="flex flex-col h-full bg-white dark:bg-gray-900">
@@ -214,7 +231,8 @@ function getLastMessage(chat: ChatData): string {
 			{/each}
 
 			<!-- Loaded chats -->
-			{#each chats as chat, index}
+			{#each sortedChatIndices as index (chats[index].title)}
+				{@const chat = chats[index]}
 				<div
 					class="w-full p-4 flex items-start gap-3 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors border-b border-gray-100 dark:border-gray-800 cursor-pointer {selectedIndex === index ? 'bg-gray-100 dark:bg-gray-800' : ''}"
 					onclick={() => onSelect(index)}
