@@ -61,12 +61,10 @@ import {
 	ChatList,
 	ChatStats,
 	ChatView,
-	Collapsible,
 	Dropdown,
 	DropdownHeader,
 	DropdownList,
 	DropdownSearch,
-	FeatureItem,
 	FileDropZone,
 	SearchBar,
 	VersionBadge,
@@ -77,6 +75,7 @@ import ConfirmDeleteChatModal from '$lib/components/ConfirmDeleteChatModal.svelt
 import DuplicateImportModal from '$lib/components/DuplicateImportModal.svelte';
 import Icon from '$lib/components/Icon.svelte';
 import IconButton from '$lib/components/IconButton.svelte';
+import IconRail from '$lib/components/IconRail.svelte';
 import ListItemButton from '$lib/components/ListItemButton.svelte';
 import LocaleSwitcher from '$lib/components/LocaleSwitcher.svelte';
 import LockedChatPane from '$lib/components/LockedChatPane.svelte';
@@ -1602,6 +1601,14 @@ async function handleForgotPin() {
 		<div class="electron-drag h-[38px] flex-shrink-0 bg-[var(--color-whatsapp-dark-green)]"></div>
 	{/if}
 
+	<div class="flex-1 flex overflow-hidden">
+	<IconRail
+		activeItem={showBookmarks ? 'starred' : 'chats'}
+		onSelectChats={() => (showBookmarks = false)}
+		onSelectStarred={() => (showBookmarks = true)}
+		onOpenSettings={() => (showSettingsModal = true)}
+	/>
+	<div class="flex-1 flex flex-col overflow-hidden">
 	{#if !appState.hasChats && loadingChats.length === 0 && chatsNeedingReselect.length === 0}
 		<!-- Empty state - show file upload -->
 		<div class="relative flex-1 flex flex-col overflow-hidden">
@@ -1667,30 +1674,8 @@ async function handleForgotPin() {
 						</div>
 					{/if}
 
-				<!-- Instructions - Collapsible -->
-				<Collapsible title={m.export_instructions_title()} class="mt-6 w-full">
-					<div class="grid grid-cols-1 gap-2">
-						<FeatureItem badge={1}>{m.export_step_1()}</FeatureItem>
-						<FeatureItem badge={2}>{m.export_step_2()}</FeatureItem>
-						<FeatureItem badge={3}>{m.export_step_3()}</FeatureItem>
-						<FeatureItem badge={4}>{m.export_step_4()}</FeatureItem>
-						<FeatureItem badge={5}>{m.export_step_5()}</FeatureItem>
-					</div>
-				</Collapsible>
-
-				<!-- Privacy & Security - Collapsible -->
-				<Collapsible title={m.privacy_title()} class="mt-4 w-full">
-					<div class="grid grid-cols-1 gap-2">
-						<FeatureItem icon="wifi-off" variant="icon">{m.privacy_offline()}</FeatureItem>
-						<FeatureItem icon="shield" variant="icon">{m.privacy_local_processing()}</FeatureItem>
-						<FeatureItem icon="code" variant="icon">{m.privacy_local_ai()}</FeatureItem>
-						<FeatureItem icon="eye-off" variant="icon">{m.privacy_no_tracking()}</FeatureItem>
-						<FeatureItem icon="code" variant="icon">{m.privacy_open_source()}</FeatureItem>
-					</div>
-				</Collapsible>
-
 				<!-- GitHub Star -->
-				<div class="mt-4 flex flex-col items-center gap-1.5">
+				<div class="mt-6 flex flex-col items-center gap-1.5">
 					<span class="text-xs text-gray-400 dark:text-gray-500">{m.github_star_title()}</span>
 					<a
 						href="https://github.com/rodrigogs/whats-reader"
@@ -2232,22 +2217,6 @@ async function handleForgotPin() {
 					</div>
 				</div>
 
-				<!-- Bookmarks panel (slide from right) -->
-				<div
-					class="bookmarks-panel w-80 flex-shrink-0 border-l border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 flex flex-col {showBookmarks ? 'bookmarks-open' : 'bookmarks-closed'}"
-					class:electron-mac={isElectronMac}
-				>
-					<!-- Bookmarks content -->
-					<div class="flex-1 overflow-hidden">
-						<BookmarksPanel
-							currentChatId={appState.selectedChat.title}
-							onNavigateToMessage={handleNavigateToBookmark}
-							onClose={() => showBookmarks = false}
-							indexedChatTitles={appState.indexedChatTitles}
-						/>
-					</div>
-				</div>
-
 				<!-- Stats modal -->
 				{#if showStats}
 					<ChatStats
@@ -2330,12 +2299,39 @@ async function handleForgotPin() {
 					<div class="text-center text-gray-500 dark:text-gray-400">
 						<Icon name="chat" size="2xl" class="mx-auto mb-4 opacity-50" />
 						<p>{m.chat_select()}</p>
+						<button
+							type="button"
+							class="mt-2 text-sm text-[var(--color-whatsapp-teal)] hover:underline cursor-pointer"
+							onclick={handleSidebarImport}
+						>
+							{m.chat_select_import_hint()}
+						</button>
 					</div>
 				</div>
 			{/if}
+
+			<!-- Bookmarks / Starred panel (slide from right) - reachable regardless
+			     of whether a chat is selected, since bookmarksState is a
+			     cross-chat singleton and BookmarksPanel already supports an
+			     "all chats" view. -->
+			<div
+				class="bookmarks-panel w-80 flex-shrink-0 border-l border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 flex flex-col {showBookmarks ? 'bookmarks-open' : 'bookmarks-closed'}"
+				class:electron-mac={isElectronMac}
+			>
+				<div class="flex-1 overflow-hidden">
+					<BookmarksPanel
+						currentChatId={appState.selectedChat?.title}
+						onNavigateToMessage={handleNavigateToBookmark}
+						onClose={() => (showBookmarks = false)}
+						indexedChatTitles={appState.indexedChatTitles}
+					/>
+				</div>
+			</div>
 		</div>
 	</div>
-{/if}
+	{/if}
+	</div>
+	</div>
 </div>
 
 <!-- Auto-update toast notification (Electron only) -->
