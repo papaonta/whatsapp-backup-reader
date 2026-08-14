@@ -20,6 +20,7 @@ import {
 } from '$lib/components';
 import AutoUpdateToast from '$lib/components/AutoUpdateToast.svelte';
 import BookmarksPanel from '$lib/components/BookmarksPanel.svelte';
+import ConfirmDeleteChatModal from '$lib/components/ConfirmDeleteChatModal.svelte';
 import DuplicateImportModal from '$lib/components/DuplicateImportModal.svelte';
 import Icon from '$lib/components/Icon.svelte';
 import IconButton from '$lib/components/IconButton.svelte';
@@ -34,7 +35,6 @@ import ModalContent from '$lib/components/ModalContent.svelte';
 import ModalHeader from '$lib/components/ModalHeader.svelte';
 import OnThisDayBanner from '$lib/components/OnThisDayBanner.svelte';
 import ReselectFileModal from '$lib/components/ReselectFileModal.svelte';
-import RestoreSessionModal from '$lib/components/RestoreSessionModal.svelte';
 import SettingsModal from '$lib/components/SettingsModal.svelte';
 import Toast from '$lib/components/Toast.svelte';
 import { resolveUniqueChatTitle } from '$lib/helpers/chat-title';
@@ -69,7 +69,6 @@ import {
 import {
 	clearLockPin,
 	findPersistedChatByTitle,
-	getDontShowRestoreModal,
 	getLockPin,
 	getPersistedChats,
 	isElectronExtractedReference,
@@ -251,18 +250,6 @@ $effect(() => {
 });
 
 // Persistence state
-let rememberedChats = $state<Set<string>>(new Set());
-
-function addRemembered(chatTitle: string) {
-	rememberedChats.add(chatTitle);
-	rememberedChats = new Set(rememberedChats);
-}
-
-function removeRemembered(chatTitle: string) {
-	rememberedChats.delete(chatTitle);
-	rememberedChats = new Set(rememberedChats);
-}
-let showRestoreSessionModal = $state(false);
 let showReselectFileModal = $state(false);
 let reselectChatMetadata = $state<PersistedChatMetadata | null>(null);
 let reselectResolve:
@@ -274,7 +261,16 @@ let reselectResolve:
 			} | null,
 	  ) => void)
 	| null = null;
-let persistedChatsToRestore = $state<PersistedChatMetadata[]>([]);
+// Chats that couldn't restore silently on launch (web-only: File System
+// Access permission / a File to re-select can't be requested without a
+// fresh user gesture) - shown as click-to-reopen placeholders in the
+// sidebar instead of prompting unprompted at launch. See
+// handleOpenReselectChat.
+let chatsNeedingReselect = $state<PersistedChatMetadata[]>([]);
+
+// Delete Chat confirmation (replaces the old close-from-session /
+// forget-from-storage split - see cuddly-brewing-breeze.md)
+let deleteChatTarget = $state<{ chat: ChatData } | null>(null);
 
 // Pre-import duplicate detection (Electron only - see checkForDuplicateImport)
 let showDuplicateImportModal = $state(false);
@@ -591,9 +587,8 @@ async function handleFilesSelected(
 					extractionId: extractionInfo?.extractionId,
 				});
 
-				// Remember this chat automatically so it survives an app
-				// restart without requiring a manual per-chat toggle
-				await rememberChat(chatData.title, true);
+				// Persist this chat automatically so it survives an app restart
+				await persistChat(chatData.title);
 
 				// Start background indexing
 				startIndexWorker(chatData);
@@ -629,27 +624,66 @@ function handleSelectChat(index: number) {
 	}
 }
 
-function handleRemoveChat(index: number) {
+// Clears every per-chat piece of local state keyed by title - shared by
+// Delete Chat and merge's absorbed-source cleanup, which both need the
+// exact same list.
+function cleanUpChatState(title: string) {
+	chatFileReferences.delete(title);
+	perspectiveByChat.delete(title);
+	perspectiveByChat = new Map(perspectiveByChat);
+	lockedByChat.delete(title);
+	lockedByChat = new Map(lockedByChat);
+	languageByChat.delete(title);
+	languageByChat = new Map(languageByChat);
+	autoLoadMediaByChat.delete(title);
+	autoLoadMediaByChat = new Map(autoLoadMediaByChat);
+	unlockedThisSession.delete(title);
+	unlockedThisSession = new Set(unlockedThisSession);
+}
+
+// Delete Chat - every persisted chat is always saved (there's no more
+// "remembered vs not" distinction), so this is the only way to get rid of
+// one: permanently removes its persisted data (and extraction folder, via
+// removePersistedChat) and closes it if currently open. Gated behind a
+// confirm step (see ConfirmDeleteChatModal) since it's destructive.
+function requestDeleteChat(index: number) {
 	const chat = appState.chats[index];
-	const chatTitle = chat?.title;
+	if (!chat) return;
+	deleteChatTarget = { chat };
+}
 
-	// Remove from current session only — persisted data stays in IndexedDB
-	// so the chat can be restored on next app launch.
-	// To remove from saved chats, user must toggle "Remember Conversation" off.
-	appState.removeChat(index);
+function cancelDeleteChat() {
+	deleteChatTarget = null;
+}
 
-	if (chatTitle) {
-		const fileRef = chatFileReferences.get(chatTitle);
-		// A never-remembered Electron-extracted chat has no persisted record
-		// to clean its extraction folder up later - delete it now instead of
-		// leaving it orphaned on disk indefinitely.
-		if (fileRef?.extractionDir && !rememberedChats.has(chatTitle)) {
-			window.electronAPI?.extraction
-				?.deleteDir(fileRef.extractionDir)
-				.catch((e) => console.error('Failed to delete extraction folder:', e));
+async function confirmDeleteChat() {
+	if (!deleteChatTarget) return;
+	const { chat } = deleteChatTarget;
+	deleteChatTarget = null;
+
+	try {
+		// Every persisted record under this title, not just one - older
+		// duplicates can exist from before same-titled-but-different chats
+		// got disambiguated at import time.
+		const allPersisted = await getPersistedChats();
+		for (const record of allPersisted) {
+			if (record.chatTitle === chat.title) {
+				await removePersistedChat(record.id);
+			}
 		}
-		chatFileReferences.delete(chatTitle);
+	} catch (e) {
+		console.error('Failed to delete persisted chat:', e);
+		showToast(m.persistence_remove_failed(), 'error');
+		return;
 	}
+
+	// Re-resolve the index by identity rather than trusting the one
+	// captured at request time - the list may have changed during the
+	// awaits above.
+	const currentIndex = appState.chats.indexOf(chat);
+	if (currentIndex !== -1) appState.removeChat(currentIndex);
+	cleanUpChatState(chat.title);
+	showToast(m.persistence_conversation_removed(), 'success');
 }
 
 function handleLanguageChange(chatTitle: string, language: string) {
@@ -887,23 +921,12 @@ async function handleMergeChats(otherChats: ChatData[], mergedTitle: string) {
 	// titles (the merged chat keeps mergedTitle going forward)
 	for (const title of sourceTitles) {
 		if (title === mergedTitle) continue;
-		chatFileReferences.delete(title);
 		const persistedChat = await findPersistedChatByTitle(title);
 		if (persistedChat) {
 			await removePersistedChat(persistedChat.id);
 		}
-		removeRemembered(title);
-		perspectiveByChat.delete(title);
-		lockedByChat.delete(title);
-		languageByChat.delete(title);
-		autoLoadMediaByChat.delete(title);
-		unlockedThisSession.delete(title);
+		cleanUpChatState(title);
 	}
-	perspectiveByChat = new Map(perspectiveByChat);
-	lockedByChat = new Map(lockedByChat);
-	languageByChat = new Map(languageByChat);
-	autoLoadMediaByChat = new Map(autoLoadMediaByChat);
-	unlockedThisSession = new Set(unlockedThisSession);
 
 	showMergeChatsModal = false;
 	showToast(
@@ -917,7 +940,8 @@ async function handleMergeChats(otherChats: ChatData[], mergedTitle: string) {
 	);
 }
 
-// Check for persisted chats on app load (one-time)
+// Check for persisted chats on app load (one-time) - every persisted chat
+// just always appears, no prompt (see cuddly-brewing-breeze.md's Fase 1).
 let persistenceChecked = false;
 $effect(() => {
 	if (!browser || persistenceChecked) return;
@@ -946,107 +970,25 @@ $effect(() => {
 			}
 
 			if (persisted.length === 0) return;
-
-			// Seed rememberedChats from IndexedDB so toggle state is correct
-			// even if user skips the restore modal or clicks "Start Fresh"
-			for (const chat of persisted) {
-				rememberedChats.add(chat.chatTitle);
-			}
-			rememberedChats = new Set(rememberedChats);
-
-			persistedChatsToRestore = persisted;
-
-			// "Don't show this again" means skip the prompt, not skip
-			// restoring - the modal is the only path back to a remembered
-			// chat, so treating it as "never restore" would silently strand
-			// every remembered chat forever.
-			const dontShow = await getDontShowRestoreModal();
-			if (dontShow) {
-				await handleRestoreChats(persisted.map((chat) => chat.id));
-				return;
-			}
-
-			// Show restore modal
-			showRestoreSessionModal = true;
+			await handleRestoreChats(persisted);
 		} catch (e) {
 			console.error('Failed to check for persisted chats:', e);
 		}
 	})();
 });
 
-// Handle restoring selected chats
-async function handleRestoreChats(chatIds: string[]) {
-	showRestoreSessionModal = false;
-
-	for (const chatId of chatIds) {
-		const persistedChat = persistedChatsToRestore.find((c) => c.id === chatId);
-		if (!persistedChat) continue;
-
+// Restores every given persisted chat. A chat that can't restore silently
+// (web-only - reselecting a File or requesting File System Access
+// permission both need a fresh user gesture, which a launch-time pass
+// doesn't have) is queued into chatsNeedingReselect instead of blocking -
+// see handleOpenReselectChat for the click-triggered follow-up.
+async function handleRestoreChats(persistedChats: PersistedChatMetadata[]) {
+	for (const persistedChat of persistedChats) {
 		try {
 			const result = await restoreChat(persistedChat);
 
 			if (result.needsReselect) {
-				// Show reselect modal and wait for user response
-				reselectChatMetadata = persistedChat;
-				showReselectFileModal = true;
-				const reselected = await new Promise<{
-					file: File;
-					path?: string;
-					handle?: FileSystemFileHandle;
-				} | null>((resolve) => {
-					reselectResolve = resolve;
-				});
-				reselectChatMetadata = null;
-				showReselectFileModal = false;
-
-				if (reselected) {
-					const reselectedBuffer = await reselected.file.arrayBuffer();
-					const { validationPassed } = await loadChatFromBuffer(
-						reselectedBuffer,
-						reselected.file.name,
-						persistedChat,
-					);
-
-					// Only upgrade persisted entry and mark remembered when validation passes
-					// to avoid binding saved metadata to the wrong file
-					if (validationPassed) {
-						const reselectedPath =
-							reselected.path || getElectronFilePath(reselected.file);
-						chatFileReferences.set(persistedChat.chatTitle, {
-							file: reselected.file,
-							filePath: reselectedPath,
-							fileHandle: reselected.handle,
-							persistedId: persistedChat.id,
-						});
-
-						// Upgrade persisted entry so future restores work automatically
-						if (reselectedPath) {
-							await updatePersistedChat(persistedChat.id, {
-								fileReference: {
-									type: 'electron-path',
-									filePath: reselectedPath,
-								},
-							});
-						} else if (reselected.handle) {
-							// Chrome/Edge: store handle and upgrade entry
-							await storeFileHandle(persistedChat.id, reselected.handle);
-							await updatePersistedChat(persistedChat.id, {
-								fileReference: {
-									type: 'file-handle',
-									handleId: persistedChat.id,
-								},
-							});
-						}
-						addRemembered(persistedChat.chatTitle);
-					} else {
-						showToast(
-							m.persistence_reselect_mismatch({
-								chatTitle: persistedChat.chatTitle,
-							}),
-							'error',
-						);
-					}
-				}
+				chatsNeedingReselect = [...chatsNeedingReselect, persistedChat];
 				continue;
 			}
 
@@ -1098,13 +1040,72 @@ async function handleRestoreChats(chatIds: string[]) {
 					persistedId: persistedChat.id,
 				});
 			}
-
-			addRemembered(persistedChat.chatTitle);
 		} catch (e) {
 			console.error(`Error restoring chat ${persistedChat.chatTitle}:`, e);
 			showToast(m.persistence_restore_failed(), 'error');
 		}
 	}
+}
+
+// Opens the reselect flow for a chat that's been sitting in
+// chatsNeedingReselect - triggered by the user clicking its placeholder row
+// in the sidebar, which is the fresh user gesture the browser requires for
+// file access.
+async function handleOpenReselectChat(persistedChat: PersistedChatMetadata) {
+	reselectChatMetadata = persistedChat;
+	showReselectFileModal = true;
+	const reselected = await new Promise<{
+		file: File;
+		path?: string;
+		handle?: FileSystemFileHandle;
+	} | null>((resolve) => {
+		reselectResolve = resolve;
+	});
+	reselectChatMetadata = null;
+	showReselectFileModal = false;
+
+	if (!reselected) return;
+
+	const reselectedBuffer = await reselected.file.arrayBuffer();
+	const { validationPassed } = await loadChatFromBuffer(
+		reselectedBuffer,
+		reselected.file.name,
+		persistedChat,
+	);
+
+	if (!validationPassed) {
+		showToast(
+			m.persistence_reselect_mismatch({ chatTitle: persistedChat.chatTitle }),
+			'error',
+		);
+		return;
+	}
+
+	const reselectedPath =
+		reselected.path || getElectronFilePath(reselected.file);
+	chatFileReferences.set(persistedChat.chatTitle, {
+		file: reselected.file,
+		filePath: reselectedPath,
+		fileHandle: reselected.handle,
+		persistedId: persistedChat.id,
+	});
+
+	// Upgrade persisted entry so future restores work automatically
+	if (reselectedPath) {
+		await updatePersistedChat(persistedChat.id, {
+			fileReference: { type: 'electron-path', filePath: reselectedPath },
+		});
+	} else if (reselected.handle) {
+		// Chrome/Edge: store handle and upgrade entry
+		await storeFileHandle(persistedChat.id, reselected.handle);
+		await updatePersistedChat(persistedChat.id, {
+			fileReference: { type: 'file-handle', handleId: persistedChat.id },
+		});
+	}
+
+	chatsNeedingReselect = chatsNeedingReselect.filter(
+		(c) => c.id !== persistedChat.id,
+	);
 }
 
 // Resolves the promise handleFilesSelected is awaiting on while the
@@ -1133,28 +1134,6 @@ function handleSkipReselect() {
 	if (reselectResolve) {
 		reselectResolve(null);
 		reselectResolve = null;
-	}
-}
-
-// Handle start fresh (close restore modal without restoring)
-function handleStartFresh() {
-	showRestoreSessionModal = false;
-	persistedChatsToRestore = [];
-}
-
-// Permanently delete a saved conversation that hasn't been restored into
-// the sidebar yet - the only path to remove a stale entry the user
-// doesn't have the original file for anymore
-async function handleDeletePersistedChat(id: string) {
-	try {
-		await removePersistedChat(id);
-		persistedChatsToRestore = persistedChatsToRestore.filter(
-			(c) => c.id !== id,
-		);
-		showToast(m.persistence_conversation_removed(), 'success');
-	} catch (e) {
-		console.error('Failed to remove saved conversation:', e);
-		showToast(m.persistence_remove_failed(), 'error');
 	}
 }
 
@@ -1328,7 +1307,10 @@ async function loadChatFromExtraction(
 	}
 }
 
-async function rememberChat(chatTitle: string, silent = false) {
+// Saves a freshly-imported chat to persisted storage - every chat is saved
+// automatically now (there's no "remembered vs not" toggle; see Delete
+// Chat above for the only way to undo this).
+async function persistChat(chatTitle: string) {
 	const chat = appState.chats.find((c) => c.title === chatTitle);
 	if (!chat) return;
 
@@ -1369,45 +1351,14 @@ async function rememberChat(chatTitle: string, silent = false) {
 				persistedId,
 			});
 		}
-
-		addRemembered(chatTitle);
-		if (!silent) showToast(m.persistence_conversation_saved(), 'success');
 	} catch (e) {
 		console.error('Failed to save conversation:', e);
 		showToast(m.persistence_save_failed(), 'error');
 	}
 }
 
-async function forgetChat(chatTitle: string) {
-	try {
-		// Remove every persisted record under this title, not just one - older
-		// duplicates can exist from before same-titled-but-different chats got
-		// disambiguated at import time, and a single stale leftover would keep
-		// resurfacing in the restore prompt after "forgetting" it once
-		const allPersisted = await getPersistedChats();
-		for (const record of allPersisted) {
-			if (record.chatTitle === chatTitle) {
-				await removePersistedChat(record.id);
-			}
-		}
-		removeRemembered(chatTitle);
-		showToast(m.persistence_conversation_removed(), 'success');
-	} catch (e) {
-		console.error('Failed to remove conversation:', e);
-		showToast(m.persistence_remove_failed(), 'error');
-	}
-}
-
-function handleToggleRemember(chatTitle: string, enabled: boolean) {
-	if (enabled) {
-		rememberChat(chatTitle);
-	} else {
-		forgetChat(chatTitle);
-	}
-}
-
-// Keep a remembered chat's persisted settings.locked in sync with lockedByChat.
-// No-op for chats that were never "Remember"-d (nothing persisted to update).
+// Keep a chat's persisted settings.locked in sync with lockedByChat. No-op
+// if the chat hasn't finished its initial persistChat save yet.
 async function persistLockedFlag(chatTitle: string, locked: boolean) {
 	const persistedId = chatFileReferences.get(chatTitle)?.persistedId;
 	if (!persistedId) return;
@@ -1502,7 +1453,7 @@ async function handleForgotPin() {
 		<div class="electron-drag h-[38px] flex-shrink-0 bg-[var(--color-whatsapp-dark-green)]"></div>
 	{/if}
 
-	{#if !appState.hasChats}
+	{#if !appState.hasChats && loadingChats.length === 0 && chatsNeedingReselect.length === 0}
 		<!-- Empty state - show file upload -->
 		<div class="relative flex-1 flex flex-col overflow-hidden">
 			<!-- Version badge (top-left) - fixed position -->
@@ -2002,16 +1953,16 @@ async function handleForgotPin() {
 						chats={appState.chats}
 						selectedIndex={appState.selectedChatIndex}
 						onSelect={handleSelectChat}
-						onRemove={handleRemoveChat}
+						onDeleteRequest={requestDeleteChat}
 						{languageByChat}
 						onLanguageChange={handleLanguageChange}
 						{autoLoadMediaByChat}
 						onAutoLoadMediaChange={handleAutoLoadMediaChange}
 						{loadingChats}
-						{rememberedChats}
-						onToggleRemember={handleToggleRemember}
 						lockedChats={lockedChatTitles}
 						onToggleLock={handleToggleLock}
+						{chatsNeedingReselect}
+						onOpenReselect={handleOpenReselectChat}
 					/>
 				</div>
 			</div>
@@ -2242,14 +2193,12 @@ async function handleForgotPin() {
 {#if isElectron && autoUpdaterState.isElectron}
 	<AutoUpdateToast />
 {/if}
-<!-- Restore Session Modal -->
-{#if showRestoreSessionModal}
-<RestoreSessionModal
-persistedChats={persistedChatsToRestore}
-onRestore={handleRestoreChats}
-onStartFresh={handleStartFresh}
-onClose={handleStartFresh}
-onDelete={handleDeletePersistedChat}
+<!-- Delete Chat confirmation -->
+{#if deleteChatTarget}
+<ConfirmDeleteChatModal
+chat={deleteChatTarget.chat}
+onConfirm={confirmDeleteChat}
+onCancel={cancelDeleteChat}
 />
 {/if}
 

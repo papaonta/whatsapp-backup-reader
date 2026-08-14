@@ -3,6 +3,7 @@ import { floating } from '$lib/actions/floating';
 import { formatRelativeDate } from '$lib/helpers/format';
 import * as m from '$lib/paraglide/messages';
 import { getLocale } from '$lib/paraglide/runtime';
+import type { PersistedChatMetadata } from '$lib/persistence.svelte';
 import type { ChatData, LoadingChat } from '$lib/state.svelte';
 import { getAvailableLanguages } from '$lib/transcription.svelte';
 import ChatAvatar from './ChatAvatar.svelte';
@@ -14,32 +15,35 @@ interface Props {
 	chats: ChatData[];
 	selectedIndex: number | null;
 	onSelect: (index: number) => void;
-	onRemove: (index: number) => void;
+	onDeleteRequest: (index: number) => void;
 	languageByChat?: Map<string, string>;
 	onLanguageChange?: (chatTitle: string, language: string) => void;
 	autoLoadMediaByChat?: Map<string, boolean>;
 	onAutoLoadMediaChange?: (chatTitle: string, enabled: boolean) => void;
 	loadingChats?: LoadingChat[];
-	rememberedChats?: Set<string>;
-	onToggleRemember?: (chatTitle: string, enabled: boolean) => void;
 	lockedChats?: Set<string>;
 	onToggleLock?: (chatTitle: string, enabled: boolean) => void;
+	// Web-only: chats that couldn't restore without a fresh user gesture -
+	// rendered as click-to-reopen placeholders (see +page.svelte's
+	// handleOpenReselectChat).
+	chatsNeedingReselect?: PersistedChatMetadata[];
+	onOpenReselect?: (metadata: PersistedChatMetadata) => void;
 }
 
 let {
 	chats,
 	selectedIndex,
 	onSelect,
-	onRemove,
+	onDeleteRequest,
 	languageByChat = new Map(),
 	onLanguageChange,
 	autoLoadMediaByChat = new Map(),
 	onAutoLoadMediaChange,
 	loadingChats = [],
-	rememberedChats = new Set(),
-	onToggleRemember,
 	lockedChats = new Set(),
 	onToggleLock,
+	chatsNeedingReselect = [],
+	onOpenReselect,
 }: Props = $props();
 
 const stageLabels = $derived({
@@ -127,15 +131,9 @@ function handleAutoLoadToggle() {
 	closeContextMenu();
 }
 
-function isRemembered(chatTitle: string): boolean {
-	return rememberedChats.has(chatTitle);
-}
-
-function handleToggleRemember() {
-	if (contextMenuIndex !== null && onToggleRemember) {
-		const chat = chats[contextMenuIndex];
-		const currentRemembered = isRemembered(chat.title);
-		onToggleRemember(chat.title, !currentRemembered);
+function handleDeleteRequest() {
+	if (contextMenuIndex !== null) {
+		onDeleteRequest(contextMenuIndex);
 	}
 	closeContextMenu();
 }
@@ -175,7 +173,7 @@ function getLastMessage(chat: ChatData): string {
 <div class="flex flex-col h-full bg-white dark:bg-gray-900">
 	<!-- Chat list -->
 	<div class="flex-1 overflow-y-auto">
-		{#if chats.length === 0 && loadingChats.length === 0}
+		{#if chats.length === 0 && loadingChats.length === 0 && chatsNeedingReselect.length === 0}
 			<div class="p-4 text-center text-gray-500 dark:text-gray-400">
 			<p>{m.chats_no_loaded()}</p>
 			<p class="text-sm mt-1">{m.chats_import_hint()}</p>
@@ -254,31 +252,11 @@ function getLastMessage(chat: ChatData): string {
 									• {chat.mediaCount} {m.count_media()}
 								</span>
 							{/if}
-							{#if !isRemembered(chat.title)}
-								<span class="text-xs text-gray-400 dark:text-gray-500 flex items-center gap-1">
-									• <Icon name="bookmark-outline" size="xs" />
-									{m.chat_not_saved()}
-								</span>
-							{/if}
 						</div>
 					</div>
 
 					<!-- Action buttons -->
 					<div class="flex flex-col gap-1 flex-shrink-0">
-						<!-- Remove button -->
-						<IconButton
-							theme="subtle"
-							size="sm"
-							dangerHover
-							onclick={(e) => {
-								e.stopPropagation();
-								onRemove(index);
-							}}
-							title={m.chat_remove()}
-							aria-label={m.chat_remove()}
-						>
-							<Icon name="close" size="md" />
-						</IconButton>
 						<!-- Menu button -->
 						<IconButton
 							theme="subtle"
@@ -292,6 +270,29 @@ function getLastMessage(chat: ChatData): string {
 						>
 							<Icon name="dots-vertical" size="md" />
 						</IconButton>
+					</div>
+				</div>
+			{/each}
+
+			<!-- Chats that need a file re-selected before they can open (web
+			     only - see chatsNeedingReselect's doc comment in +page.svelte) -->
+			{#each chatsNeedingReselect as metadata (metadata.id)}
+				<div
+					class="w-full p-4 flex items-start gap-3 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors border-b border-gray-100 dark:border-gray-800 cursor-pointer opacity-60"
+					onclick={() => onOpenReselect?.(metadata)}
+					onkeydown={(e) => e.key === 'Enter' && onOpenReselect?.(metadata)}
+					role="button"
+					tabindex="0"
+				>
+					<ChatAvatar name={metadata.chatTitle} size="md" />
+					<div class="flex-1 min-w-0 text-left">
+						<h3 class="font-semibold text-gray-800 dark:text-white truncate">
+							{metadata.chatTitle}
+						</h3>
+						<p class="text-sm text-gray-500 dark:text-gray-400 truncate mt-0.5 flex items-center gap-1">
+							<Icon name="folder" size="xs" class="flex-shrink-0" />
+							{m.chat_needs_reselect()}
+						</p>
 					</div>
 				</div>
 			{/each}
@@ -331,22 +332,6 @@ function getLastMessage(chat: ChatData): string {
 				</ListItemButton>
 			{/if}
 			
-			<!-- Remember Conversation toggle - chats are remembered by default on
-			     import, so this reads as an opt-out ("Forget this chat") in the
-			     common case and only falls back to the opt-in label for a chat
-			     someone previously forgot -->
-			<ListItemButton class="justify-between" onclick={handleToggleRemember}>
-				<span class="flex items-center gap-2">
-					<Icon
-						name={isRemembered(chats[contextMenuIndex]?.title || '') ? 'bookmark' : 'bookmark-outline'}
-						size="sm"
-					/>
-					{isRemembered(chats[contextMenuIndex]?.title || '')
-						? m.persistence_forget_conversation()
-						: m.persistence_remember_conversation()}
-				</span>
-			</ListItemButton>
-
 			<!-- Lock chat toggle -->
 			<ListItemButton class="justify-between" onclick={handleToggleLock}>
 				<span class="flex items-center gap-2">
@@ -411,18 +396,10 @@ function getLastMessage(chat: ChatData): string {
 			<!-- Divider -->
 			<div class="border-t border-gray-200 dark:border-gray-700 my-1"></div>
 			
-			<!-- Remove chat -->
-			<ListItemButton
-				danger
-				onclick={() => {
-					if (contextMenuIndex !== null) {
-						onRemove(contextMenuIndex);
-					}
-					closeContextMenu();
-				}}
-			>
+			<!-- Delete chat -->
+			<ListItemButton danger onclick={handleDeleteRequest}>
 				<Icon name="trash" size="sm" />
-				{m.context_menu_remove()}
+				{m.chat_delete()}
 			</ListItemButton>
 		</div>
 	{/if}

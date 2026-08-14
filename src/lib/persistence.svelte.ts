@@ -69,7 +69,6 @@ interface ValidationResult {
 
 const PERSISTENCE_PREFIX = 'whatsapp-persisted-chat-';
 const HANDLE_PREFIX = 'whatsapp-file-handle-';
-const DONT_SHOW_KEY = 'whatsapp-dont-show-restore-modal';
 const LOCK_PIN_KEY = 'whatsapp-lock-settings';
 const LOCK_WEBAUTHN_KEY = 'whatsapp-lock-webauthn-credential';
 const ONBOARDING_COMPLETED_KEY = 'whatsapp-onboarding-completed';
@@ -630,31 +629,6 @@ export async function restoreChat(
 			success: false,
 			error: e instanceof Error ? e.message : 'Unknown error',
 		};
-	}
-}
-
-/**
- * Get "don't show again" preference
- */
-export async function getDontShowRestoreModal(): Promise<boolean> {
-	if (!browser) return false;
-	try {
-		return (await get<boolean>(DONT_SHOW_KEY)) || false;
-	} catch (e) {
-		console.error('Failed to get dont-show-restore-modal preference:', e);
-		return false;
-	}
-}
-
-/**
- * Set "don't show again" preference
- */
-export async function setDontShowRestoreModal(value: boolean): Promise<void> {
-	if (!browser) return;
-	try {
-		await set(DONT_SHOW_KEY, value);
-	} catch (e) {
-		console.error('Failed to set dont show preference:', e);
 	}
 }
 
