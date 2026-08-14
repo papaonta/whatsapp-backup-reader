@@ -20,6 +20,7 @@ import {
 } from '$lib/components';
 import AutoUpdateToast from '$lib/components/AutoUpdateToast.svelte';
 import BookmarksPanel from '$lib/components/BookmarksPanel.svelte';
+import DuplicateImportModal from '$lib/components/DuplicateImportModal.svelte';
 import Icon from '$lib/components/Icon.svelte';
 import IconButton from '$lib/components/IconButton.svelte';
 import ListItemButton from '$lib/components/ListItemButton.svelte';
@@ -59,6 +60,7 @@ import {
 import * as m from '$lib/paraglide/messages';
 import { getLocale } from '$lib/paraglide/runtime';
 import {
+	checkForDuplicateImport,
 	parseExtractedChat,
 	parseZipFile,
 	readFileAsArrayBuffer,
@@ -274,6 +276,17 @@ let reselectResolve:
 	| null = null;
 let persistedChatsToRestore = $state<PersistedChatMetadata[]>([]);
 
+// Pre-import duplicate detection (Electron only - see checkForDuplicateImport)
+let showDuplicateImportModal = $state(false);
+let duplicateImportInfo = $state<{
+	existing: PersistedChatMetadata;
+	isExactDuplicate: boolean;
+	newMessageCount: number;
+} | null>(null);
+let duplicateImportResolve:
+	| ((choice: 'update' | 'new' | 'cancel') => void)
+	| null = null;
+
 // Track file references for persistence (chatTitle -> {file, filePath, fileHandle, persistedId})
 // Note: mutated via .set()/.delete() without reassignment — read imperatively, not in reactive contexts
 let chatFileReferences = $state<
@@ -301,6 +314,10 @@ const autoLoadMediaForCurrentChat = $derived.by(() => {
 
 const STAGE_PROGRESS = {
 	reading: { offset: 0.0, weight: 0.1 },
+	// Never driven through makeProgressCallback (set directly on
+	// loadingChats instead, since the pre-check is a brief, single-shot
+	// step) - present here only so STAGE_PROGRESS[stage] type-checks.
+	checking: { offset: 0.0, weight: 0.1 },
 	extracting: { offset: 0.1, weight: 0.5 },
 	parsing: { offset: 0.6, weight: 0.4 },
 } as const;
@@ -437,12 +454,46 @@ async function handleFilesSelected(
 				let extractionInfo:
 					| { extractionDir: string; extractionId: string }
 					| undefined;
+				let forceDistinctTitle = false;
 
 				const electronExtractionApi = window.electronAPI?.isElectron
 					? window.electronAPI.extraction
 					: undefined;
 
 				if (electronExtractionApi && droppedFilePath) {
+					// Fast pre-check: does this look like a chat we've already
+					// imported? Reads just the chat transcript, not the full
+					// archive - see checkForDuplicateImport. Lets the user avoid
+					// paying for a multi-minute extraction of a large export
+					// they didn't mean to redo.
+					loadingChats = loadingChats.map((lc) =>
+						lc.id === loadingId
+							? { ...lc, progress: 0, stage: 'checking' as const }
+							: lc,
+					);
+					const duplicateCheck = await checkForDuplicateImport(
+						droppedFilePath,
+						file.name,
+					);
+
+					if (duplicateCheck) {
+						duplicateImportInfo = duplicateCheck;
+						showDuplicateImportModal = true;
+						const choice = await new Promise<'update' | 'new' | 'cancel'>(
+							(resolve) => {
+								duplicateImportResolve = resolve;
+							},
+						);
+						showDuplicateImportModal = false;
+						duplicateImportInfo = null;
+
+						if (choice === 'cancel') {
+							loadingChats = loadingChats.filter((lc) => lc.id !== loadingId);
+							return;
+						}
+						forceDistinctTitle = choice === 'new';
+					}
+
 					// Stream the zip straight to disk instead of buffering it in
 					// memory - this is the fix for large (multi-GB) exports
 					// failing silently. See electron/lib/extract-zip.cjs.
@@ -510,6 +561,19 @@ async function handleFilesSelected(
 
 				// Remove loading placeholder and add actual chat
 				loadingChats = loadingChats.filter((lc) => lc.id !== loadingId);
+
+				// User chose "Import as New" on the duplicate-check modal - force
+				// a distinct title up front so it can never collide with the
+				// existing persisted/open chat (resolveUniqueChatTitle would
+				// otherwise treat genuinely-the-same content as "keep the title
+				// as-is", which is exactly what we're overriding here).
+				if (forceDistinctTitle) {
+					const shortDate = new Date().toLocaleDateString(getLocale(), {
+						month: 'short',
+						day: 'numeric',
+					});
+					chatData.title = `${chatData.title} (re-imported ${shortDate})`;
+				}
 
 				// Guard against a different chat coincidentally deriving the same
 				// title as one already open - persistence is keyed by title, so a
@@ -1040,6 +1104,15 @@ async function handleRestoreChats(chatIds: string[]) {
 			console.error(`Error restoring chat ${persistedChat.chatTitle}:`, e);
 			showToast(m.persistence_restore_failed(), 'error');
 		}
+	}
+}
+
+// Resolves the promise handleFilesSelected is awaiting on while the
+// duplicate-import modal is open (see checkForDuplicateImport).
+function resolveDuplicateImport(choice: 'update' | 'new' | 'cancel') {
+	if (duplicateImportResolve) {
+		duplicateImportResolve(choice);
+		duplicateImportResolve = null;
 	}
 }
 
@@ -2187,6 +2260,18 @@ chatMetadata={reselectChatMetadata}
 onFileSelected={handleReselectFile}
 onSkip={handleSkipReselect}
 onClose={handleSkipReselect}
+/>
+{/if}
+
+<!-- Duplicate Import Modal -->
+{#if showDuplicateImportModal && duplicateImportInfo}
+<DuplicateImportModal
+existing={duplicateImportInfo.existing}
+isExactDuplicate={duplicateImportInfo.isExactDuplicate}
+newMessageCount={duplicateImportInfo.newMessageCount}
+onUpdate={() => resolveDuplicateImport('update')}
+onImportAsNew={() => resolveDuplicateImport('new')}
+onCancel={() => resolveDuplicateImport('cancel')}
 />
 {/if}
 

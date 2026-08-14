@@ -9,6 +9,7 @@ export { default as Dropdown } from './Dropdown.svelte';
 export { default as DropdownHeader } from './DropdownHeader.svelte';
 export { default as DropdownList } from './DropdownList.svelte';
 export { default as DropdownSearch } from './DropdownSearch.svelte';
+export { default as DuplicateImportModal } from './DuplicateImportModal.svelte';
 export { default as FeatureItem } from './FeatureItem.svelte';
 export { default as FileDropZone } from './FileDropZone.svelte';
 export { default as Icon } from './Icon.svelte';

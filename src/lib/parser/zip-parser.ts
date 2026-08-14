@@ -7,6 +7,11 @@
 
 import JSZip from 'jszip';
 import {
+	findPersistedChatByTitle,
+	type PersistedChatMetadata,
+	validateRestoredFile,
+} from '../persistence.svelte';
+import {
 	type ChatMessage,
 	GENERIC_CHAT_TITLE_FALLBACK,
 	type ParsedChat,
@@ -677,6 +682,72 @@ export async function parseExtractedChat(
 		extractionDir: extracted.extractionDir,
 		extractionId: extracted.extractionId,
 	};
+}
+
+/**
+ * Checks whether a ZIP about to be imported (Electron only) looks like a
+ * chat that's already been persisted, without running the full extraction -
+ * reads just the chat transcript entry via the main process's
+ * `extraction:peekChatText` (see electron/lib/extract-zip.cjs's
+ * peekChatEntry, which first checks the central directory and, failing
+ * that, tries a time-boxed scan for the transcript among orphaned entries -
+ * see its own doc comment for why that's bounded rather than exhaustive),
+ * then reuses the exact same title-derivation, parsing, and comparison
+ * logic the full import path already uses, just on that one small piece of
+ * text.
+ *
+ * Returns null whenever no confident comparison can be made (peek failed,
+ * no chat entry found within the time budget, or no persisted chat shares
+ * its derived title) - the caller should treat null as "proceed with a
+ * normal import", not as an error.
+ */
+export async function checkForDuplicateImport(
+	zipFilePath: string,
+	originalFileName: string,
+): Promise<{
+	existing: PersistedChatMetadata;
+	isExactDuplicate: boolean;
+	newMessageCount: number;
+	derivedTitle: string;
+} | null> {
+	const extractionApi = window.electronAPI?.isElectron
+		? window.electronAPI.extraction
+		: undefined;
+	if (!extractionApi) return null;
+
+	try {
+		const peek = await extractionApi.peekChatText(zipFilePath);
+		if (!peek.success || !peek.chatContent) return null;
+
+		const derivedTitle = deriveChatTitle({
+			chatContent: peek.chatContent,
+			chatFilename: peek.chatFilename ?? 'WhatsApp Chat',
+			chatEntryPath: peek.chatEntryPath ?? null,
+			originalFileName,
+		});
+		const parsedChat = parseChat(peek.chatContent, derivedTitle);
+		if (parsedChat.messages.length === 0) return null;
+
+		const existing = await findPersistedChatByTitle(derivedTitle);
+		if (!existing) return null;
+
+		const validation = validateRestoredFile(
+			{ messages: parsedChat.messages },
+			existing,
+		);
+		if (!validation.valid) return null;
+
+		return {
+			existing,
+			isExactDuplicate: validation.confidence === 'high',
+			newMessageCount: parsedChat.messages.length,
+			derivedTitle,
+		};
+	} catch (e) {
+		// Never let a pre-check failure block a real import.
+		console.warn('Duplicate-import pre-check failed:', e);
+		return null;
+	}
 }
 
 /**

@@ -353,10 +353,13 @@ export async function updatePersistedChat(
 }
 
 /**
- * Validate a restored file against saved metadata
+ * Validate a restored file against saved metadata. Only reads
+ * `parsed.messages`, so a lightweight pre-check result (parsed messages
+ * without a full ChatData) can reuse this directly - see
+ * checkForDuplicateImport in zip-parser.ts.
  */
 export function validateRestoredFile(
-	parsed: ChatData,
+	parsed: Pick<ChatData, 'messages'>,
 	saved: PersistedChatMetadata,
 ): ValidationResult {
 	const reasons: string[] = [];

@@ -44,6 +44,7 @@ let {
 
 const stageLabels = $derived({
 	reading: m.loading_reading(),
+	checking: m.loading_checking(),
 	extracting: m.loading_extracting(),
 	parsing: m.loading_parsing(),
 });

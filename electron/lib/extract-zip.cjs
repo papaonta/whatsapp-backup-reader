@@ -1,13 +1,21 @@
 const fs = require('node:fs');
+const os = require('node:os');
 const path = require('node:path');
+const crypto = require('node:crypto');
 const { Readable } = require('node:stream');
 const {
 	locateCentralDirectory,
 	readCentralDirectoryEntries,
 	recoverOrphanEntries,
+	findChatEntryInGap,
 	readLocalFileHeader,
 	extractEntryToFile,
 } = require('./zip-reader.cjs');
+
+// How long peekChatEntry's orphan-gap fallback scan is allowed to run
+// before giving up - see findChatEntryInGap's doc comment for why this
+// exists and how the value was chosen.
+const CHAT_GAP_SCAN_BUDGET_MS = 8000;
 
 const EXTRACTION_ROOT_NAME = 'extracted-chats';
 const MEDIA_DIR_NAME = 'media';
@@ -198,6 +206,103 @@ async function extractZipToDirectory({
 	}
 }
 
+/**
+ * Reads just the chat transcript text entry out of a ZIP, without running
+ * the full extraction - lets the renderer detect "this looks like a chat
+ * you've already imported" before committing to a multi-minute extraction
+ * of a large export. Walks the central directory for metadata only (no
+ * decompression) to find the candidate entry, mirroring the primary
+ * heuristic zip-parser.ts's classifyEntries uses (last non-hidden .txt
+ * entry wins) - then extracts only that one entry.
+ *
+ * Returns `{ success: true, chatContent: null }` (not an error) if no
+ * .txt entry is found in the central directory - this also happens for
+ * the subset of large exports where the chat transcript itself is one of
+ * the orphaned entries recoverOrphanEntries would normally find; doing
+ * that recovery here would cost the same time as a full extraction, which
+ * defeats the point of a fast pre-check, so the caller just proceeds with
+ * a normal import in that case.
+ */
+async function peekChatEntry(zipPath) {
+	let fileHandle;
+	const tmpPath = path.join(os.tmpdir(), `wr-peek-${crypto.randomUUID()}.txt`);
+	try {
+		fileHandle = await fs.promises.open(zipPath, 'r');
+		const stat = await fileHandle.stat();
+		const location = await locateCentralDirectory(fileHandle, stat.size);
+
+		let chatEntry = null;
+		let lastEntry = null;
+		for await (const entry of readCentralDirectoryEntries(
+			fileHandle,
+			location,
+		)) {
+			if (entry.isDirectory) continue;
+			if (!lastEntry || entry.localHeaderOffset > lastEntry.localHeaderOffset) {
+				lastEntry = entry;
+			}
+			const filename = entry.fileName.split('/').pop() || entry.fileName;
+			const cleanFilename = filename.replace(/^\uFEFF/, '');
+			const isTxtFile = cleanFilename.toLowerCase().endsWith('.txt');
+			const isNotHidden = !cleanFilename.startsWith('.');
+			if (isTxtFile && isNotHidden) {
+				chatEntry = entry;
+			}
+		}
+
+		if (chatEntry) {
+			await extractEntryToFile(fileHandle, zipPath, chatEntry, tmpPath);
+			const chatContent = await fs.promises.readFile(tmpPath, 'utf-8');
+			return {
+				success: true,
+				chatContent,
+				chatFilename: chatEntry.fileName.split('/').pop() || chatEntry.fileName,
+				chatEntryPath: chatEntry.fileName,
+			};
+		}
+
+		// No chat-looking entry in the confirmed central directory - it may
+		// be one of the orphaned entries (see zip-reader.cjs's module
+		// docstring). Worth a bounded-time scan of the gap: cheap for
+		// exports with few orphans, and safely gives up rather than costing
+		// as much as a full extraction for exports with many.
+		if (lastEntry) {
+			const { dataStart } = await readLocalFileHeader(
+				fileHandle,
+				lastEntry.localHeaderOffset,
+			);
+			const gapStart = dataStart + lastEntry.compressedSize;
+			const gapEnd = location.centralDirectoryOffset;
+			const found = await findChatEntryInGap(
+				fileHandle,
+				zipPath,
+				gapStart,
+				gapEnd,
+				tmpPath,
+				CHAT_GAP_SCAN_BUDGET_MS,
+			);
+			if (found) {
+				return {
+					success: true,
+					chatContent: found.content,
+					chatFilename: found.fileName.split('/').pop() || found.fileName,
+					chatEntryPath: found.fileName,
+				};
+			}
+		}
+
+		return { success: true, chatContent: null };
+	} catch (error) {
+		return {
+			success: false,
+			error: error instanceof Error ? error.message : String(error),
+		};
+	} finally {
+		await fs.promises.rm(tmpPath, { force: true }).catch(() => {});
+		await fileHandle?.close().catch(() => {});
+	}
+}
+
 async function loadManifest(extractionDir) {
 	const manifestPath = path.join(extractionDir, MANIFEST_FILENAME);
 	const raw = await fs.promises.readFile(manifestPath, 'utf-8');
@@ -351,6 +456,7 @@ module.exports = {
 	resolveMediaFilePath,
 	buildMediaFileResponse,
 	extractZipToDirectory,
+	peekChatEntry,
 	loadManifest,
 	deleteExtractionDir,
 	pruneOrphans,

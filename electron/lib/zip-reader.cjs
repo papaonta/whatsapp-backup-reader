@@ -439,6 +439,128 @@ async function recoverOrphanEntries(
 }
 
 /**
+ * Best-effort fast path for finding just the chat transcript when it's one
+ * of the orphaned entries (see recoverOrphanEntries doc above) - scans the
+ * same gap the same way, but stops as soon as it hits a non-hidden `.txt`
+ * entry instead of recovering every orphan. Each candidate along the way
+ * still has to be fully decompressed to discover its true extent and let
+ * the scan advance past it (there's no directory for orphans - that's the
+ * whole reason they need this kind of scan), so this is only actually fast
+ * when the chat transcript happens to be one of the first few orphans by
+ * archive-body order; if it's the last of many (large exports can have
+ * hundreds), this can cost close to as much as a full recovery pass. There
+ * is no way to know which case applies without scanning, which is exactly
+ * why this exists as a separate, abortable pass rather than folding a
+ * "stop early" flag into recoverOrphanEntries itself (which always needs
+ * to recover everything for a real import). `maxScanMs` bounds the
+ * worst case: measured against two real large exports this was built
+ * against, one found its chat transcript in 0.24s (5 orphans total), the
+ * other took 233s (624 orphans, transcript was the very last one) - with
+ * no cheap way to tell which case a given file is upfront, without a cap
+ * the second case would make a "fast pre-check" cost as much as just
+ * running the real extraction, and then the real extraction would still
+ * have to run on top of that if the user proceeds, roughly doubling total
+ * wait time for exactly the files this is least able to help with. Giving
+ * up and returning null past the cap is the same graceful "couldn't
+ * pre-check, import normally" outcome as never having found a candidate
+ * at all.
+ * @param {import('node:fs/promises').FileHandle} fileHandle
+ * @param {string} zipPath
+ * @param {number} gapStart
+ * @param {number} gapEnd
+ * @param {string} scratchPath - Reusable throwaway path each candidate's
+ *   decompressed bytes are written to; only kept (read back and returned)
+ *   for the entry that actually matches.
+ * @param {number} maxScanMs - Give up and return null once this much time
+ *   has elapsed.
+ * @returns {Promise<{ fileName: string, content: string } | null>}
+ */
+async function findChatEntryInGap(
+	fileHandle,
+	zipPath,
+	gapStart,
+	gapEnd,
+	scratchPath,
+	maxScanMs,
+) {
+	let cursor = gapStart;
+	const deadline = Date.now() + maxScanMs;
+
+	while (cursor < gapEnd) {
+		if (Date.now() > deadline) return null;
+		const foundOffset = await findNextLocalFileHeaderSignature(
+			fileHandle,
+			cursor,
+			gapEnd,
+		);
+		if (foundOffset === null) break;
+
+		const header = Buffer.alloc(LOCAL_FILE_HEADER_SIZE);
+		await fileHandle.read(header, 0, header.length, foundOffset);
+		if (header.readUInt32LE(0) !== LOCAL_FILE_HEADER_SIGNATURE) {
+			cursor = foundOffset + 1;
+			continue;
+		}
+
+		const compressionMethod = header.readUInt16LE(8);
+		const filenameLength = header.readUInt16LE(26);
+		const extraFieldLength = header.readUInt16LE(28);
+		if (
+			(compressionMethod !== 0 && compressionMethod !== 8) ||
+			filenameLength === 0 ||
+			filenameLength > MAX_ORPHAN_FILENAME_LENGTH ||
+			foundOffset + LOCAL_FILE_HEADER_SIZE + filenameLength > gapEnd
+		) {
+			cursor = foundOffset + 1;
+			continue;
+		}
+
+		const filenameBuffer = Buffer.alloc(filenameLength);
+		await fileHandle.read(
+			filenameBuffer,
+			0,
+			filenameLength,
+			foundOffset + LOCAL_FILE_HEADER_SIZE,
+		);
+		const fileName = filenameBuffer.toString('utf8');
+		if (!PLAUSIBLE_FILENAME_REGEX.test(fileName) || fileName.endsWith('/')) {
+			cursor = foundOffset + 1;
+			continue;
+		}
+
+		const dataStart =
+			foundOffset + LOCAL_FILE_HEADER_SIZE + filenameLength + extraFieldLength;
+
+		const attempt = await tryDecompressBounded(
+			zipPath,
+			dataStart,
+			gapEnd,
+			compressionMethod,
+			scratchPath,
+		);
+		if (!attempt.success || attempt.compressedBytesConsumed === 0) {
+			cursor = foundOffset + 1;
+			continue;
+		}
+
+		const cleanName = (fileName.split('/').pop() || fileName).replace(
+			/^\uFEFF/,
+			'',
+		);
+		const isTxtFile = cleanName.toLowerCase().endsWith('.txt');
+		const isNotHidden = !cleanName.startsWith('.');
+		if (isTxtFile && isNotHidden) {
+			const content = await fs.promises.readFile(scratchPath, 'utf-8');
+			return { fileName, content };
+		}
+
+		cursor = dataStart + attempt.compressedBytesConsumed;
+	}
+
+	return null;
+}
+
+/**
  * Streams one central-directory-listed entry's decompressed bytes to
  * `destPath`, using its known (and, for entries with a ZIP64 extra field,
  * already-corrected) compressedSize.
@@ -475,6 +597,7 @@ module.exports = {
 	locateCentralDirectory,
 	readCentralDirectoryEntries,
 	recoverOrphanEntries,
+	findChatEntryInGap,
 	readLocalFileHeader,
 	extractEntryToFile,
 };

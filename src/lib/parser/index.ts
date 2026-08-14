@@ -20,6 +20,7 @@ export type {
 	ParseProgress,
 } from './zip-parser';
 export {
+	checkForDuplicateImport,
 	cleanupMediaUrls,
 	deriveChatTitle,
 	getExtractedMediaUrl,

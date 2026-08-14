@@ -15,7 +15,7 @@ export interface LoadingChat {
 	id: string;
 	filename: string;
 	progress: number;
-	stage: 'reading' | 'extracting' | 'parsing';
+	stage: 'reading' | 'checking' | 'extracting' | 'parsing';
 }
 
 export interface AppState {

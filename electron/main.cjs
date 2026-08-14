@@ -14,6 +14,7 @@ const {
 	getExtractionRoot,
 	isValidExtractionId,
 	extractZipToDirectory,
+	peekChatEntry,
 	loadManifest: loadExtractionManifest,
 	deleteExtractionDir,
 	pruneOrphans: pruneOrphanedExtractions,
@@ -367,6 +368,19 @@ ipcMain.handle(
 		}
 	},
 );
+
+ipcMain.handle('extraction:peekChatText', async (_event, zipFilePath) => {
+	try {
+		const normalized = await validateAbsoluteZipPath(zipFilePath);
+		const result = await peekChatEntry(normalized);
+		return result;
+	} catch (error) {
+		return {
+			success: false,
+			error: error instanceof Error ? error.message : String(error),
+		};
+	}
+});
 
 ipcMain.handle('extraction:loadManifest', async (_event, extractionDir) => {
 	try {

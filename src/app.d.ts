@@ -58,6 +58,14 @@ interface ExtractionPruneResult {
 	error?: string;
 }
 
+interface ChatTextPeekResult {
+	success: boolean;
+	chatContent?: string | null;
+	chatFilename?: string;
+	chatEntryPath?: string;
+	error?: string;
+}
+
 interface ElectronAPI {
 	openFile: () => Promise<FileResult | null>;
 	openFolder: () => Promise<string | null>;
@@ -81,6 +89,7 @@ interface ElectronAPI {
 			zipFilePath: string,
 			extractionId: string,
 		) => Promise<ExtractionResult>;
+		peekChatText: (zipFilePath: string) => Promise<ChatTextPeekResult>;
 		loadManifest: (extractionDir: string) => Promise<ExtractionResult>;
 		deleteDir: (
 			extractionDir: string,
