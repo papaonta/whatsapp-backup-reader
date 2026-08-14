@@ -43,8 +43,14 @@ let {
 							count: existing.messageCount,
 							date: formatRelativeDate(existing.updatedAt, getLocale(), m.time_today(), m.time_yesterday(), 'label'),
 						})}
-					{:else}
+					{:else if newMessageCount > existing.messageCount}
 						{m.persistence_duplicate_newer_description({
+							chatTitle: existing.chatTitle,
+							oldCount: existing.messageCount,
+							newCount: newMessageCount,
+						})}
+					{:else}
+						{m.persistence_duplicate_fewer_description({
 							chatTitle: existing.chatTitle,
 							oldCount: existing.messageCount,
 							newCount: newMessageCount,

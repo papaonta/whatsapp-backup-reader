@@ -261,6 +261,7 @@
   "persistence_duplicate_title": "Possible Duplicate Import",
   "persistence_duplicate_exact_description": "You've already imported this chat ({count} messages, last updated {date}).",
   "persistence_duplicate_newer_description": "This looks like a newer export of \"{chatTitle}\" — saved: {oldCount} messages, this file: {newCount} messages.",
+  "persistence_duplicate_fewer_description": "This file has fewer messages than what's saved for \"{chatTitle}\" ({newCount} vs {oldCount}) - it might be an older or partial export.",
   "persistence_duplicate_update": "Update",
   "persistence_duplicate_import_as_new": "Import as New",
   "persistence_duplicate_cancel": "Cancel",

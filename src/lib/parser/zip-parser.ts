@@ -719,16 +719,24 @@ export async function checkForDuplicateImport(
 		const peek = await extractionApi.peekChatText(zipFilePath);
 		if (!peek.success || !peek.chatContent) return null;
 
-		const derivedTitle = deriveChatTitle({
+		const titleHint = deriveChatTitle({
 			chatContent: peek.chatContent,
 			chatFilename: peek.chatFilename ?? 'WhatsApp Chat',
 			chatEntryPath: peek.chatEntryPath ?? null,
 			originalFileName,
 		});
-		const parsedChat = parseChat(peek.chatContent, derivedTitle);
+		// deriveChatTitle only un-mangles iOS's generic "_chat.txt" name - for
+		// a real filename like Android's "WhatsApp Chat with Alice.txt" it's
+		// returned unchanged, and parseChat does its own further cleanup
+		// (strips "WhatsApp Chat with "/".txt", falls back to participant
+		// names) before settling on the title that's actually saved to
+		// persisted storage. Looking up by titleHint instead of the parsed
+		// result silently missed every non-iOS export - a real chat's saved
+		// title is always parsedChat.title, never the intermediate hint.
+		const parsedChat = parseChat(peek.chatContent, titleHint);
 		if (parsedChat.messages.length === 0) return null;
 
-		const existing = await findPersistedChatByTitle(derivedTitle);
+		const existing = await findPersistedChatByTitle(parsedChat.title);
 		if (!existing) return null;
 
 		const validation = validateRestoredFile(
@@ -741,7 +749,7 @@ export async function checkForDuplicateImport(
 			existing,
 			isExactDuplicate: validation.confidence === 'high',
 			newMessageCount: parsedChat.messages.length,
-			derivedTitle,
+			derivedTitle: parsedChat.title,
 		};
 	} catch (e) {
 		// Never let a pre-check failure block a real import.

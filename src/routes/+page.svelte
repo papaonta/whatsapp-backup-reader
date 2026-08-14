@@ -451,6 +451,14 @@ async function handleFilesSelected(
 					| { extractionDir: string; extractionId: string }
 					| undefined;
 				let forceDistinctTitle = false;
+				// Set when the user picks "Update" on the duplicate-import
+				// prompt - forces the exact saved title instead of letting
+				// resolveUniqueChatTitle's own (looser, and independent)
+				// same-chat heuristic second-guess it, which can disagree with
+				// the check that triggered the prompt in the first place (e.g.
+				// a shorter/partial re-export) and silently create a separate
+				// chat instead of the update the user explicitly asked for.
+				let forcedUpdateTitle: string | undefined;
 
 				const electronExtractionApi = window.electronAPI?.isElectron
 					? window.electronAPI.extraction
@@ -487,7 +495,11 @@ async function handleFilesSelected(
 							loadingChats = loadingChats.filter((lc) => lc.id !== loadingId);
 							return;
 						}
-						forceDistinctTitle = choice === 'new';
+						if (choice === 'update') {
+							forcedUpdateTitle = duplicateCheck.existing.chatTitle;
+						} else {
+							forceDistinctTitle = true;
+						}
 					}
 
 					// Stream the zip straight to disk instead of buffering it in
@@ -571,16 +583,24 @@ async function handleFilesSelected(
 					chatData.title = `${chatData.title} (re-imported ${stamp})`;
 				}
 
-				// Guard against a different chat coincidentally deriving the same
-				// title as one already open - persistence is keyed by title, so a
-				// collision there would silently overwrite the other chat's data
-				chatData.title = resolveUniqueChatTitle(chatData, appState.chats);
+				if (forcedUpdateTitle) {
+					// "Update" was explicitly confirmed - use the exact saved
+					// title rather than resolveUniqueChatTitle's own same-chat
+					// heuristic, which can disagree with the check that
+					// triggered the prompt (see forcedUpdateTitle's declaration).
+					chatData.title = forcedUpdateTitle;
+				} else {
+					// Guard against a different chat coincidentally deriving the
+					// same title as one already open - persistence is keyed by
+					// title, so a collision there would silently overwrite the
+					// other chat's data
+					chatData.title = resolveUniqueChatTitle(chatData, appState.chats);
+				}
 
-				// resolveUniqueChatTitle keeps the title unchanged when it
-				// judges this to genuinely be the same chat as one already
-				// open (e.g. "Update" on the duplicate-import prompt) - in
-				// that case replace the open copy instead of appending a
-				// visually-identical second one.
+				// Replace rather than duplicate if a chat with this exact title
+				// is already open in the current session - either
+				// resolveUniqueChatTitle judged it the same chat, or the user
+				// just confirmed "Update" above.
 				const openDuplicateIndex = appState.chats.findIndex(
 					(c) => c.title === chatData.title,
 				);
