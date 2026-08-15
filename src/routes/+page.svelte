@@ -77,15 +77,13 @@ import DuplicateImportModal from '$lib/components/DuplicateImportModal.svelte';
 import Icon from '$lib/components/Icon.svelte';
 import IconButton from '$lib/components/IconButton.svelte';
 import IconRail from '$lib/components/IconRail.svelte';
+import InfoPanel from '$lib/components/InfoPanel.svelte';
 import ListItemButton from '$lib/components/ListItemButton.svelte';
 import LocaleSwitcher from '$lib/components/LocaleSwitcher.svelte';
 import LockedChatPane from '$lib/components/LockedChatPane.svelte';
 import LockPinModal from '$lib/components/LockPinModal.svelte';
 import MediaGallery from '$lib/components/MediaGallery.svelte';
 import MergeChatsModal from '$lib/components/MergeChatsModal.svelte';
-import Modal from '$lib/components/Modal.svelte';
-import ModalContent from '$lib/components/ModalContent.svelte';
-import ModalHeader from '$lib/components/ModalHeader.svelte';
 import OnThisDayBanner from '$lib/components/OnThisDayBanner.svelte';
 import ReselectFileModal from '$lib/components/ReselectFileModal.svelte';
 import SettingsSection from '$lib/components/SettingsSection.svelte';
@@ -184,7 +182,7 @@ let showBookmarks = $state(false);
 let showArchivedView = $state(false);
 let chatSearchQuery = $state('');
 let showMediaGallery = $state(false);
-let showParticipants = $state(false);
+let showChatInfo = $state(false);
 let participantStats = $state<Map<string, number> | null>(null);
 let scrollToMessageId = $state<string | null>(null);
 let showMergeChatsModal = $state(false);
@@ -206,8 +204,13 @@ function hideToast() {
 	toastMessage = null;
 }
 
-// Compute participant stats when modal opens (not during render)
-function openParticipantsModal() {
+// Compute participant stats when the info panel opens (not during render)
+function toggleChatInfo() {
+	if (showChatInfo) {
+		showChatInfo = false;
+		participantStats = null;
+		return;
+	}
 	if (!appState.selectedChat) return;
 
 	// Pre-compute message counts in a single pass
@@ -218,12 +221,9 @@ function openParticipantsModal() {
 		}
 	}
 	participantStats = counts;
-	showParticipants = true;
-}
-
-function closeParticipantsModal() {
-	showParticipants = false;
-	participantStats = null;
+	showChatInfo = true;
+	showBookmarks = false;
+	showMediaGallery = false;
 }
 let showPerspectiveDropdown = $state(false);
 let perspectiveSearchQuery = $state('');
@@ -793,6 +793,7 @@ function toggleBookmarks() {
 	showBookmarks = !showBookmarks;
 	if (showBookmarks) {
 		showMediaGallery = false;
+		showChatInfo = false;
 	}
 }
 
@@ -800,6 +801,7 @@ function toggleMediaGallery() {
 	showMediaGallery = !showMediaGallery;
 	if (showMediaGallery) {
 		showBookmarks = false;
+		showChatInfo = false;
 	}
 }
 
@@ -1849,7 +1851,7 @@ async function handleForgotPin() {
 						<button
 							type="button"
 							class="text-xs text-white/70 hover:text-white truncate block max-w-full text-left cursor-pointer transition-colors"
-							onclick={openParticipantsModal}
+							onclick={toggleChatInfo}
 						title={m.participants_view_all()}
 						>
 							{appState.selectedChat.participants.slice(0, 5).join(', ')}
@@ -1897,6 +1899,16 @@ async function handleForgotPin() {
 										>
 											<Icon name="user" size="sm" />
 											<span>{m.perspective_view_as()}</span>
+										</ListItemButton>
+										<ListItemButton
+											active={showChatInfo}
+											onclick={() => {
+												showChatOptionsDropdown = false;
+												toggleChatInfo();
+											}}
+										>
+											<Icon name="info" size="sm" />
+											<span>{m.chat_info_title()}</span>
 										</ListItemButton>
 										<ListItemButton
 											active={showMediaGallery}
@@ -1985,6 +1997,17 @@ async function handleForgotPin() {
 									{@render perspectiveSelectorContent()}
 								</Dropdown>
 							</div>
+
+							<IconButton
+								theme="dark"
+								size="md"
+								active={showChatInfo}
+								onclick={toggleChatInfo}
+								title={m.chat_info_title()}
+								aria-label={m.chat_info_toggle()}
+							>
+								<Icon name="info" size="md" />
+							</IconButton>
 
 							<IconButton
 								theme="dark"
@@ -2349,64 +2372,21 @@ async function handleForgotPin() {
 					/>
 				{/if}
 
-				<!-- Participants modal -->
-				<Modal open={showParticipants && !!appState.selectedChat && !!participantStats} onClose={closeParticipantsModal}>
-					<ModalHeader
-						icon="users"
-						title={m.participants_title()}
-						subtitle={appState.selectedChat ? m.participants_members({ count: appState.selectedChat.participants.length }) : ''}
-						onClose={closeParticipantsModal}
-						closeLabel={m.participants_close()}
-					/>
-					<ModalContent>
-						{#if appState.selectedChat && participantStats}
-							{#each appState.selectedChat.participants as participant}
-								{@const messageCount = participantStats.get(participant) || 0}
-								{@const isPhoneNumber = /\+?\d[\d\s\-()]{8,}/.test(participant)}
-								{@const contactInfo = appState.selectedChat.contacts?.get(participant.toLowerCase())}
-								{@const phoneFromVcf = contactInfo?.phoneNumber}
-								<div class="flex items-center gap-3 px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-700/50 border-b border-gray-100 dark:border-gray-700/50 last:border-b-0">
-									<!-- Avatar -->
-									<div class="w-10 h-10 rounded-full bg-[var(--color-whatsapp-teal)] flex items-center justify-center text-white font-semibold flex-shrink-0">
-										{participant.charAt(0).toUpperCase()}
-									</div>
-									
-									<!-- Participant info -->
-									<div class="flex-1 min-w-0">
-										<p class="font-medium text-gray-900 dark:text-white truncate">
-											{participant}
-										</p>
-										{#if phoneFromVcf}
-											<!-- Phone number from VCF file -->
-											<p class="text-xs text-[var(--color-whatsapp-teal)] font-medium">
-												{phoneFromVcf}
-											</p>
-											<p class="text-xs text-gray-400 dark:text-gray-500">
-												{m.participants_phone_from_vcf()}
-											</p>
-										{:else if isPhoneNumber}
-											<p class="text-xs text-gray-500 dark:text-gray-400">
-												{m.participants_phone_number()}
-											</p>
-										{:else}
-											<p class="text-xs text-gray-500 dark:text-gray-400">
-												{m.participants_contact_name()}
-											</p>
-										{/if}
-									</div>
-									
-									<!-- Message count for this participant -->
-									{#if messageCount > 0}
-										<div class="text-right flex-shrink-0">
-											<p class="text-sm font-medium text-[var(--color-whatsapp-teal)]">{messageCount}</p>
-											<p class="text-xs text-gray-400">{m.participants_messages()}</p>
-										</div>
-									{/if}
-								</div>
-							{/each}
+				<!-- Chat info panel (slide from right) -->
+				<div
+					class="info-panel w-80 flex-shrink-0 border-l border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 flex flex-col {showChatInfo ? 'info-open' : 'info-closed'}"
+					class:electron-mac={isElectronMac}
+				>
+					<div class="flex-1 overflow-hidden">
+						{#if appState.selectedChat}
+							<InfoPanel
+								chat={appState.selectedChat}
+								{participantStats}
+								onClose={toggleChatInfo}
+							/>
 						{/if}
-					</ModalContent>
-				</Modal>
+					</div>
+				</div>
 
 				<!-- Merge chats modal -->
 				{#if showMergeChatsModal}
