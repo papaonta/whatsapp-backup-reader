@@ -23,6 +23,11 @@ interface Props {
 	loadingChats?: LoadingChat[];
 	lockedChats?: Set<string>;
 	onToggleLock?: (chatTitle: string, enabled: boolean) => void;
+	archivedChats?: Set<string>;
+	onToggleArchive?: (chatTitle: string, archived: boolean) => void;
+	// When true, show only archived chats (the "Archived" rail view)
+	// instead of the default main list, which hides them.
+	showArchivedOnly?: boolean;
 	// Web-only: chats that couldn't restore without a fresh user gesture -
 	// rendered as click-to-reopen placeholders (see +page.svelte's
 	// handleOpenReselectChat).
@@ -42,6 +47,9 @@ let {
 	loadingChats = [],
 	lockedChats = new Set(),
 	onToggleLock,
+	archivedChats = new Set(),
+	onToggleArchive,
+	showArchivedOnly = false,
 	chatsNeedingReselect = [],
 	onOpenReselect,
 }: Props = $props();
@@ -151,6 +159,19 @@ function handleToggleLock() {
 	closeContextMenu();
 }
 
+function isArchived(chatTitle: string): boolean {
+	return archivedChats.has(chatTitle);
+}
+
+function handleToggleArchive() {
+	if (contextMenuIndex !== null && onToggleArchive) {
+		const chat = chats[contextMenuIndex];
+		const currentArchived = isArchived(chat.title);
+		onToggleArchive(chat.title, !currentArchived);
+	}
+	closeContextMenu();
+}
+
 function formatDate(date: Date | null): string {
 	return formatRelativeDate(
 		date,
@@ -180,6 +201,7 @@ function getLastMessage(chat: ChatData): string {
 const sortedChatIndices = $derived(
 	chats
 		.map((_, index) => index)
+		.filter((index) => isArchived(chats[index].title) === showArchivedOnly)
 		.sort(
 			(a, b) =>
 				(chats[b].endDate?.getTime() ?? 0) - (chats[a].endDate?.getTime() ?? 0),
@@ -190,14 +212,19 @@ const sortedChatIndices = $derived(
 <div class="flex flex-col h-full bg-white dark:bg-gray-900">
 	<!-- Chat list -->
 	<div class="flex-1 overflow-y-auto">
-		{#if chats.length === 0 && loadingChats.length === 0 && chatsNeedingReselect.length === 0}
+		{#if showArchivedOnly && sortedChatIndices.length === 0}
+			<div class="p-4 text-center text-gray-500 dark:text-gray-400">
+			<p>{m.archived_chats_empty()}</p>
+			</div>
+		{:else if !showArchivedOnly && sortedChatIndices.length === 0 && loadingChats.length === 0 && chatsNeedingReselect.length === 0}
 			<div class="p-4 text-center text-gray-500 dark:text-gray-400">
 			<p>{m.chats_no_loaded()}</p>
 			<p class="text-sm mt-1">{m.chats_import_hint()}</p>
 			</div>
 		{:else}
-			<!-- Loading chat placeholders -->
-			{#each loadingChats as loadingChat (loadingChat.id)}
+			<!-- Loading chat placeholders (not shown in the Archived view - these
+			     are transient import-in-progress states, never archived) -->
+			{#each showArchivedOnly ? [] : loadingChats as loadingChat (loadingChat.id)}
 				<div
 					class="w-full p-4 flex items-start gap-3 border-b border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50"
 				>
@@ -293,8 +320,9 @@ const sortedChatIndices = $derived(
 			{/each}
 
 			<!-- Chats that need a file re-selected before they can open (web
-			     only - see chatsNeedingReselect's doc comment in +page.svelte) -->
-			{#each chatsNeedingReselect as metadata (metadata.id)}
+			     only - see chatsNeedingReselect's doc comment in +page.svelte).
+			     Not shown in the Archived view for the same reason as above. -->
+			{#each showArchivedOnly ? [] : chatsNeedingReselect as metadata (metadata.id)}
 				<div
 					class="w-full p-4 flex items-start gap-3 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors border-b border-gray-100 dark:border-gray-800 cursor-pointer opacity-60"
 					onclick={() => onOpenReselect?.(metadata)}
@@ -361,6 +389,16 @@ const sortedChatIndices = $derived(
 				{#if isLocked(chats[contextMenuIndex]?.title || '')}
 					<Icon name="check" size="sm" class="text-[var(--color-whatsapp-teal)]" />
 				{/if}
+			</ListItemButton>
+
+			<!-- Archive chat toggle -->
+			<ListItemButton class="justify-between" onclick={handleToggleArchive}>
+				<span class="flex items-center gap-2">
+					<Icon name="archive" size="sm" />
+					{isArchived(chats[contextMenuIndex]?.title || '')
+						? m.chat_unarchive()
+						: m.chat_archive()}
+				</span>
 			</ListItemButton>
 
 			<!-- Language submenu trigger -->

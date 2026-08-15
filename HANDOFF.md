@@ -16,7 +16,7 @@ diambil biar gak diulang tanya. Remote "origin" = upstream (read-only),
 remote "mine" = papaonta/whatsapp-backup-reader (push target).
 ```
 
-## Current status (as of commit `3ffef01`, 2026-08-15)
+## Current status (as of 2026-08-15, Fase 3 just implemented, not yet committed/pushed)
 
 Working through a 6-phase WhatsApp-Desktop-style redesign, brainstormed
 and broken down across several sessions. **Fase 1 and Fase 2 are shipped
@@ -49,10 +49,38 @@ and pushed to `mine/main`.**
   order, and the empty-import screen's "How to export"/"Privacy &
   Security" collapsibles were removed (redundant with the onboarding
   wizard added since that screen was last touched).
-- **Not started yet — Fase 3:** Archive & Delete. New `archived` field on
-  persisted chat metadata, filter the chat list by it, give the rail's
-  Archived icon a real destination. (Delete itself already works, from
-  Fase 1.)
+- **Fase 3 — Archive & Delete (implemented, needs a final live check +
+  commit):** new `settings.archived: boolean` on `PersistedChatMetadata`
+  (`persistence.svelte.ts`), plumbed through `+page.svelte` exactly like
+  `locked` already was - module-scoped `archivedByChat` Map, an
+  `archivedChatTitles` derived Set, restore-on-launch sync, and an
+  instant `persistArchivedFlag`/`handleToggleArchive` pair (mirrors
+  `persistLockedFlag`/`handleToggleLock`). `ChatList.svelte` gained
+  `archivedChats`/`onToggleArchive`/`showArchivedOnly` props - the last
+  one filters `sortedChatIndices` to show *only* archived chats
+  (Archived view) or *hide* them (default Chats view), plus an
+  Archive/Unarchive context-menu item next to the existing Lock toggle.
+  `IconRail`'s Archived button is no longer a disabled placeholder - it's
+  a third `activeItem` state alongside `chats`/`starred`. Clicking it
+  swaps the sidebar's title bar from the Import button to an "Archived"
+  header with a back chevron (`showArchivedView` in `+page.svelte`,
+  reusing the same `ChatList` component with `showArchivedOnly=true`
+  rather than a separate component/panel - unlike Starred, which is a
+  separate slide-in panel). New i18n keys: `chat_archive`,
+  `chat_unarchive`, `chat_archived_toast`, `chat_unarchived_toast`,
+  `archived_chats_title`, `archived_chats_back`, `archived_chats_empty`.
+  Verified live via a throwaway Playwright script (see working
+  conventions below) - archive/unarchive/filter/empty-state all confirmed
+  visually correct. Did **not** verify persisted-`archived`-survives-a-
+  reload in that script - the test's chat was imported via a plain
+  `<input type=file>` (no File System Access handle), so on reload it
+  hits the pre-existing, unrelated "Tap to reopen" web limitation before
+  the restore-settings code path ever runs; the restore code for
+  `archived` is a structural copy-paste of the already-proven `locked`
+  restore code right next to it, so this wasn't treated as a real gap -
+  but a next session should still smoke-test an actual restart (Electron,
+  or web with a real file picker) before calling Fase 3 fully done.
+  (Delete itself already worked, from Fase 1.)
 - **Not started yet — Fase 4:** Settings becomes a full section instead
   of a modal (currently `SettingsModal.svelte`, opened from 3 places incl.
   the new rail's Settings icon - all 3 triggers were deliberately kept on

@@ -3,14 +3,20 @@ import * as m from '$lib/paraglide/messages';
 import Icon from './Icon.svelte';
 
 interface Props {
-	activeItem: 'chats' | 'starred';
+	activeItem: 'chats' | 'starred' | 'archived';
 	onSelectChats: () => void;
 	onSelectStarred: () => void;
+	onSelectArchived: () => void;
 	onOpenSettings: () => void;
 }
 
-let { activeItem, onSelectChats, onSelectStarred, onOpenSettings }: Props =
-	$props();
+let {
+	activeItem,
+	onSelectChats,
+	onSelectStarred,
+	onSelectArchived,
+	onOpenSettings,
+}: Props = $props();
 
 const activeClasses =
 	'text-[var(--color-whatsapp-teal)] bg-[var(--color-whatsapp-teal)]/10';
@@ -37,10 +43,10 @@ const baseClasses =
 
 	<button
 		type="button"
-		class="{baseClasses} {disabledClasses}"
-		disabled
+		class="{baseClasses} {activeItem === 'archived' ? activeClasses : inactiveClasses}"
+		onclick={onSelectArchived}
 		aria-label={m.rail_archived()}
-		title={m.rail_coming_soon()}
+		title={m.rail_archived()}
 	>
 		<Icon name="archive" size="lg" />
 	</button>

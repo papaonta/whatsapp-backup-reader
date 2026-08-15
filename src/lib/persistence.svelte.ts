@@ -58,6 +58,7 @@ export interface PersistedChatMetadata {
 		autoLoadMedia: boolean;
 		perspective: string | null;
 		locked: boolean;
+		archived: boolean;
 	};
 }
 
@@ -175,6 +176,7 @@ export async function savePersistedChat(
 		autoLoadMedia: boolean;
 		perspective: string | null;
 		locked: boolean;
+		archived: boolean;
 	},
 	filePath?: string, // For Electron
 	fileHandle?: FileSystemFileHandle, // For web with File System Access API

@@ -29,6 +29,7 @@ let perspectiveByChat = $state<Map<string, string | null>>(new Map());
 let languageByChat = $state<Map<string, string>>(new Map());
 let autoLoadMediaByChat = $state<Map<string, boolean>>(new Map());
 let lockedByChat = $state<Map<string, boolean>>(new Map());
+let archivedByChat = $state<Map<string, boolean>>(new Map());
 // Chats unlocked (PIN entered) for the current session only - never
 // persisted, so every locked chat re-locks after a reload/restart (but,
 // per the above, should *not* re-lock just from an app lock/unlock).
@@ -180,6 +181,7 @@ let showStats = $state(false);
 let showSidebar = $state(true);
 let sidebarFileInput: HTMLInputElement | undefined = $state();
 let showBookmarks = $state(false);
+let showArchivedView = $state(false);
 let showMediaGallery = $state(false);
 let showParticipants = $state(false);
 let participantStats = $state<Map<string, number> | null>(null);
@@ -249,7 +251,7 @@ $effect(() => {
 });
 
 // perspectiveByChat, languageByChat, autoLoadMediaByChat, lockedByChat,
-// unlockedThisSession are declared in the module script above - see its
+// archivedByChat, unlockedThisSession are declared in the module script above - see its
 // comment for why they can't live here as normal instance-scoped $state.
 
 // Pending PIN modal request; null when no lock modal should be shown.
@@ -262,6 +264,13 @@ let lockPinRequest = $state<{
 const lockedChatTitles = $derived(
 	new Set(
 		[...lockedByChat].filter(([, locked]) => locked).map(([title]) => title),
+	),
+);
+const archivedChatTitles = $derived(
+	new Set(
+		[...archivedByChat]
+			.filter(([, archived]) => archived)
+			.map(([title]) => title),
 	),
 );
 const isSelectedChatLocked = $derived(
@@ -693,6 +702,8 @@ function cleanUpChatState(title: string) {
 	perspectiveByChat = new Map(perspectiveByChat);
 	lockedByChat.delete(title);
 	lockedByChat = new Map(lockedByChat);
+	archivedByChat.delete(title);
+	archivedByChat = new Map(archivedByChat);
 	languageByChat.delete(title);
 	languageByChat = new Map(languageByChat);
 	autoLoadMediaByChat.delete(title);
@@ -1343,6 +1354,10 @@ async function applyRestoredChatData(
 			lockedByChat.set(chatData.title, restoredMetadata.settings.locked);
 			lockedByChat = new Map(lockedByChat);
 		}
+		if (restoredMetadata.settings.archived !== undefined) {
+			archivedByChat.set(chatData.title, restoredMetadata.settings.archived);
+			archivedByChat = new Map(archivedByChat);
+		}
 	}
 
 	// Remove loading placeholder and add actual chat
@@ -1481,6 +1496,7 @@ async function persistChat(chatTitle: string) {
 				autoLoadMedia: autoLoadMediaByChat.get(chatTitle) || false,
 				perspective: perspectiveByChat.get(chatTitle) || null,
 				locked: lockedByChat.get(chatTitle) || false,
+				archived: archivedByChat.get(chatTitle) || false,
 			},
 			fileRef?.filePath,
 			fileHandle,
@@ -1517,11 +1533,42 @@ async function persistLockedFlag(chatTitle: string, locked: boolean) {
 				autoLoadMedia: autoLoadMediaByChat.get(chatTitle) || false,
 				perspective: perspectiveByChat.get(chatTitle) || null,
 				locked,
+				archived: archivedByChat.get(chatTitle) || false,
 			},
 		});
 	} catch (e) {
 		console.error('Failed to persist lock state:', e);
 	}
+}
+
+// Keep a chat's persisted settings.archived in sync with archivedByChat.
+// No-op if the chat hasn't finished its initial persistChat save yet.
+async function persistArchivedFlag(chatTitle: string, archived: boolean) {
+	const persistedId = chatFileReferences.get(chatTitle)?.persistedId;
+	if (!persistedId) return;
+	try {
+		await updatePersistedChat(persistedId, {
+			settings: {
+				language: languageByChat.get(chatTitle) || 'portuguese',
+				autoLoadMedia: autoLoadMediaByChat.get(chatTitle) || false,
+				perspective: perspectiveByChat.get(chatTitle) || null,
+				locked: lockedByChat.get(chatTitle) || false,
+				archived,
+			},
+		});
+	} catch (e) {
+		console.error('Failed to persist archive state:', e);
+	}
+}
+
+function handleToggleArchive(chatTitle: string, archived: boolean) {
+	archivedByChat.set(chatTitle, archived);
+	archivedByChat = new Map(archivedByChat);
+	persistArchivedFlag(chatTitle, archived);
+	showToast(
+		archived ? m.chat_archived_toast() : m.chat_unarchived_toast(),
+		'success',
+	);
 }
 
 function applyLock(chatTitle: string) {
@@ -1603,9 +1650,16 @@ async function handleForgotPin() {
 
 	<div class="flex-1 flex overflow-hidden">
 	<IconRail
-		activeItem={showBookmarks ? 'starred' : 'chats'}
-		onSelectChats={() => (showBookmarks = false)}
+		activeItem={showArchivedView ? 'archived' : showBookmarks ? 'starred' : 'chats'}
+		onSelectChats={() => {
+			showBookmarks = false;
+			showArchivedView = false;
+		}}
 		onSelectStarred={() => (showBookmarks = true)}
+		onSelectArchived={() => {
+			showArchivedView = true;
+			showBookmarks = false;
+		}}
 		onOpenSettings={() => (showSettingsModal = true)}
 	/>
 	<div class="flex-1 flex flex-col overflow-hidden">
@@ -2058,16 +2112,31 @@ async function handleForgotPin() {
 				
 				<!-- Chats title bar - matches search bar styling exactly -->
 				<div class="p-3 bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
-					<button
-						type="button"
-						class="relative flex items-center w-full h-10 pl-10 pr-4 bg-gray-100 dark:bg-gray-800 rounded-lg cursor-pointer hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
-						onclick={handleSidebarImport}
-					>
-						<div class="absolute inset-y-0 left-3 flex items-center pointer-events-none">
-							<Icon name="plus" size="md" class="text-gray-400" />
+					{#if showArchivedView}
+						<div class="flex items-center gap-2 h-10">
+							<IconButton
+								theme="subtle"
+								size="sm"
+								onclick={() => (showArchivedView = false)}
+								aria-label={m.archived_chats_back()}
+								title={m.archived_chats_back()}
+							>
+								<Icon name="chevron-left" size="md" />
+							</IconButton>
+							<span class="font-medium text-gray-800 dark:text-white">{m.archived_chats_title()}</span>
 						</div>
-						<span class="text-gray-500">{m.import_chat()}</span>
-					</button>
+					{:else}
+						<button
+							type="button"
+							class="relative flex items-center w-full h-10 pl-10 pr-4 bg-gray-100 dark:bg-gray-800 rounded-lg cursor-pointer hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+							onclick={handleSidebarImport}
+						>
+							<div class="absolute inset-y-0 left-3 flex items-center pointer-events-none">
+								<Icon name="plus" size="md" class="text-gray-400" />
+							</div>
+							<span class="text-gray-500">{m.import_chat()}</span>
+						</button>
+					{/if}
 					<input
 						bind:this={sidebarFileInput}
 						type="file"
@@ -2095,6 +2164,9 @@ async function handleForgotPin() {
 						{loadingChats}
 						lockedChats={lockedChatTitles}
 						onToggleLock={handleToggleLock}
+						archivedChats={archivedChatTitles}
+						onToggleArchive={handleToggleArchive}
+						showArchivedOnly={showArchivedView}
 						{chatsNeedingReselect}
 						onOpenReselect={handleOpenReselectChat}
 					/>
