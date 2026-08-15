@@ -16,7 +16,7 @@ diambil biar gak diulang tanya. Remote "origin" = upstream (read-only),
 remote "mine" = papaonta/whatsapp-backup-reader (push target).
 ```
 
-## Current status (as of commit `efb2358`, 2026-08-15, not yet pushed)
+## Current status (as of commit `b5a40fe`, 2026-08-15, not yet pushed)
 
 Working through a 6-phase WhatsApp-Desktop-style redesign, brainstormed
 and broken down across several sessions. **All 6 phases are now shipped**
@@ -199,8 +199,19 @@ broken - it may just be another concurrent session's work, already safe.
 
 ### Separately-tracked, not part of the 6-phase redesign
 
-- Backup-ZIP-download (export full chat+media back out as a ZIP) - not
-  started.
+- **Backup-ZIP-download (done):** new `handleBackupChatAsZip` in
+  `+page.svelte`, a new `archive`-icon button next to the existing
+  "Export chat" (HTML-only) one. Reused two patterns proven elsewhere
+  this session rather than inventing new ones - `MediaGallery`'s
+  `downloadSelected()` mechanics (JSZip + `getMediaBytes`/
+  `mediaFileHasSource` skip-if-no-source), and the `rawLine`-join
+  transcript trick from `handleMergeChats` (no reverse-parser needed,
+  `WhatsApp Chat with {title}.txt` naming round-trips the title). Media
+  written flat at the ZIP root (not grouped into type subfolders like the
+  media-gallery download) to match a real WhatsApp export's shape.
+  Verified end-to-end: downloaded, inspected contents, re-imported into a
+  fresh session, confirmed identical title/participants/message/media
+  counts to the original - not just "a zip got created."
 - Web/browser architecture rework so it can handle large ZIPs the way
   Electron does (currently Electron-only optimization) - not started.
 - Cancel button for an in-progress extraction - not started.
