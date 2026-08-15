@@ -10,6 +10,8 @@
   "sidebar_show": "Show sidebar",
   "sidebar_close": "Close sidebar",
   "import_chat": "Import Chat",
+  "chats_search_placeholder": "Search chats...",
+  "chats_search_no_results": "No chats match \"{query}\"",
   "rail_chats": "Chats",
   "rail_archived": "Archived",
   "rail_starred": "Starred",

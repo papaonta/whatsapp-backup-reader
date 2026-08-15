@@ -28,6 +28,10 @@ interface Props {
 	// When true, show only archived chats (the "Archived" rail view)
 	// instead of the default main list, which hides them.
 	showArchivedOnly?: boolean;
+	// Chat-list search filter - matches against title or any participant
+	// name (see +page.svelte's chatSearchQuery). Not full-text message
+	// search (a separate, bigger feature).
+	nameFilter?: string;
 	// Web-only: chats that couldn't restore without a fresh user gesture -
 	// rendered as click-to-reopen placeholders (see +page.svelte's
 	// handleOpenReselectChat).
@@ -50,6 +54,7 @@ let {
 	archivedChats = new Set(),
 	onToggleArchive,
 	showArchivedOnly = false,
+	nameFilter = '',
 	chatsNeedingReselect = [],
 	onOpenReselect,
 }: Props = $props();
@@ -190,6 +195,12 @@ function getLastMessage(chat: ChatData): string {
 	return `${last.sender}: ${last.content}`;
 }
 
+function matchesNameFilter(chat: ChatData, query: string): boolean {
+	if (!query) return true;
+	if (chat.title.toLowerCase().includes(query)) return true;
+	return chat.participants.some((p) => p.toLowerCase().includes(query));
+}
+
 // Display chats most-recent-activity-first (chat.endDate, already computed
 // at parse time as the last message's timestamp) rather than insertion
 // order - insertion order differs between a live import (appended to the
@@ -198,21 +209,27 @@ function getLastMessage(chat: ChatData): string {
 // list of indices rather than `chats` itself so onSelect/onDeleteRequest/
 // selectedIndex, which all address the original `chats` array, keep working
 // unchanged.
-const sortedChatIndices = $derived(
-	chats
+const sortedChatIndices = $derived.by(() => {
+	const query = nameFilter.toLowerCase().trim();
+	return chats
 		.map((_, index) => index)
 		.filter((index) => isArchived(chats[index].title) === showArchivedOnly)
+		.filter((index) => matchesNameFilter(chats[index], query))
 		.sort(
 			(a, b) =>
 				(chats[b].endDate?.getTime() ?? 0) - (chats[a].endDate?.getTime() ?? 0),
-		),
-);
+		);
+});
 </script>
 
 <div class="flex flex-col h-full bg-white dark:bg-gray-900">
 	<!-- Chat list -->
 	<div class="flex-1 overflow-y-auto">
-		{#if showArchivedOnly && sortedChatIndices.length === 0}
+		{#if nameFilter.trim() && sortedChatIndices.length === 0}
+			<div class="p-4 text-center text-gray-500 dark:text-gray-400">
+			<p>{m.chats_search_no_results({ query: nameFilter.trim() })}</p>
+			</div>
+		{:else if showArchivedOnly && sortedChatIndices.length === 0}
 			<div class="p-4 text-center text-gray-500 dark:text-gray-400">
 			<p>{m.archived_chats_empty()}</p>
 			</div>
@@ -222,9 +239,10 @@ const sortedChatIndices = $derived(
 			<p class="text-sm mt-1">{m.chats_import_hint()}</p>
 			</div>
 		{:else}
-			<!-- Loading chat placeholders (not shown in the Archived view - these
-			     are transient import-in-progress states, never archived) -->
-			{#each showArchivedOnly ? [] : loadingChats as loadingChat (loadingChat.id)}
+			<!-- Loading chat placeholders (not shown in the Archived view or
+			     while filtering - these are transient import-in-progress
+			     states, never archived and have no meaningful name match). -->
+			{#each showArchivedOnly || nameFilter.trim() ? [] : loadingChats as loadingChat (loadingChat.id)}
 				<div
 					class="w-full p-4 flex items-start gap-3 border-b border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50"
 				>
@@ -321,8 +339,9 @@ const sortedChatIndices = $derived(
 
 			<!-- Chats that need a file re-selected before they can open (web
 			     only - see chatsNeedingReselect's doc comment in +page.svelte).
-			     Not shown in the Archived view for the same reason as above. -->
-			{#each showArchivedOnly ? [] : chatsNeedingReselect as metadata (metadata.id)}
+			     Not shown in the Archived view or while filtering, for the
+			     same reason as the loading placeholders above. -->
+			{#each showArchivedOnly || nameFilter.trim() ? [] : chatsNeedingReselect as metadata (metadata.id)}
 				<div
 					class="w-full p-4 flex items-start gap-3 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors border-b border-gray-100 dark:border-gray-800 cursor-pointer opacity-60"
 					onclick={() => onOpenReselect?.(metadata)}

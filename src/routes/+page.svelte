@@ -182,6 +182,7 @@ let showSidebar = $state(true);
 let sidebarFileInput: HTMLInputElement | undefined = $state();
 let showBookmarks = $state(false);
 let showArchivedView = $state(false);
+let chatSearchQuery = $state('');
 let showMediaGallery = $state(false);
 let showParticipants = $state(false);
 let participantStats = $state<Map<string, number> | null>(null);
@@ -2147,16 +2148,39 @@ async function handleForgotPin() {
 							<span class="font-medium text-gray-800 dark:text-white">{m.archived_chats_title()}</span>
 						</div>
 					{:else}
-						<button
-							type="button"
-							class="relative flex items-center w-full h-10 pl-10 pr-4 bg-gray-100 dark:bg-gray-800 rounded-lg cursor-pointer hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
-							onclick={handleSidebarImport}
-						>
-							<div class="absolute inset-y-0 left-3 flex items-center pointer-events-none">
-								<Icon name="plus" size="md" class="text-gray-400" />
+						<div class="flex items-center gap-2">
+							<div class="relative flex-1">
+								<div class="absolute inset-y-0 left-3 flex items-center pointer-events-none">
+									<Icon name="search" size="sm" class="text-gray-400" />
+								</div>
+								<input
+									type="text"
+									bind:value={chatSearchQuery}
+									placeholder={m.chats_search_placeholder()}
+									class="w-full h-10 pl-10 pr-9 bg-gray-100 dark:bg-gray-800 rounded-lg text-sm text-gray-800 dark:text-gray-100 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[var(--color-whatsapp-teal)]"
+								/>
+								{#if chatSearchQuery}
+									<button
+										type="button"
+										class="absolute inset-y-0 right-2 flex items-center cursor-pointer text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+										onclick={() => (chatSearchQuery = '')}
+										aria-label={m.search_clear()}
+										title={m.search_clear()}
+									>
+										<Icon name="close" size="sm" />
+									</button>
+								{/if}
 							</div>
-							<span class="text-gray-500">{m.import_chat()}</span>
-						</button>
+							<IconButton
+								theme="light"
+								size="lg"
+								onclick={handleSidebarImport}
+								aria-label={m.import_chat()}
+								title={m.import_chat()}
+							>
+								<Icon name="plus" size="md" />
+							</IconButton>
+						</div>
 					{/if}
 					<input
 						bind:this={sidebarFileInput}
@@ -2188,6 +2212,7 @@ async function handleForgotPin() {
 						archivedChats={archivedChatTitles}
 						onToggleArchive={handleToggleArchive}
 						showArchivedOnly={showArchivedView}
+						nameFilter={chatSearchQuery}
 						{chatsNeedingReselect}
 						onOpenReselect={handleOpenReselectChat}
 					/>
