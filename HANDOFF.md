@@ -16,18 +16,23 @@ diambil biar gak diulang tanya. Remote "origin" = upstream (read-only),
 remote "mine" = papaonta/whatsapp-backup-reader (push target).
 ```
 
-## Current status (as of commit `650b3a9`, 2026-08-15, not yet pushed)
+## Current status (as of commit `efb2358`, 2026-08-15, not yet pushed)
 
 Working through a 6-phase WhatsApp-Desktop-style redesign, brainstormed
-and broken down across several sessions. **Fase 1-5 are shipped. Fase 6
-is split into 4 independent sub-projects (user's explicit choice, asked
-via AskUserQuestion) - 6a (info panel) done, 6b/6c/6d not started.** The
-user has said they'll do their own full manual test pass once everything
-is done, and wants a UAT document covering all fases at that point - the
-per-phase "here's a dmg + test scenario" ritual used through Fase 5 is
-relaxed for the rest of Fase 6: keep self-verifying (Playwright + real
-browser/Electron as before) and committing after each verified step
-without waiting for a go-ahead each time.
+and broken down across several sessions. **All 6 phases are now shipped**
+(Fase 6 was split into 4 independent sub-projects, user's explicit choice
+via AskUserQuestion - 6a/6b/6c/6d all done). Nothing from the original
+redesign brainstorm remains unbuilt.
+
+**Next step is the user's, not a next phase**: they said they'd do their
+own full manual test pass once everything's done, and want a UAT document
+covering all fases at that point - that request hasn't been fulfilled yet
+if you're picking this up mid-way. Ask before starting anything new;
+don't assume there's a "Fase 7". The per-phase "here's a dmg + test
+scenario" ritual used through Fase 5 was relaxed for the rest of Fase 6
+(self-verify via Playwright + real browser/Electron, commit after each
+verified step without waiting for a go-ahead) - that relaxed cadence
+likely still applies to whatever comes next unless told otherwise.
 
 **Heads up for whoever picks this up:** two Claude Code sessions worked on
 this repo concurrently at one point mid-redesign (Fase 3 landed from a
@@ -167,9 +172,30 @@ broken - it may just be another concurrent session's work, already safe.
   Once auto-matched, a chat's perspective persists and is overridable
   exactly like a manual pick always was - no new dropdown UI needed.
   New Settings section between App Lock/PIN and Storage.
-- **Not started — Fase 6d:** search across all chats' message content -
-  the biggest sub-project, needs a merged/cross-chat search index
-  (current search-worker is per-chat only).
+- **Fase 6d — Cross-chat message search (done):** the biggest of the four
+  sub-projects - confirmed no existing multi-chat search capacity to
+  extend (`index-worker.ts` builds navigation data, not a search index;
+  `search-worker.ts`'s actual matching is per-chat brute-force
+  `.includes()`). New `cross-chat-search.svelte.ts` orchestrates **one
+  unmodified `search-worker.ts` instance per currently-loaded, indexed
+  chat** (`Map<chatTitle, Worker>`, diffed against `appState.chats` so
+  results self-correct if a chat is deleted mid-session) rather than
+  redesigning the worker to hold multiple chats. Each worker's own
+  `searchId` cancellation is reused directly as a shared search-
+  generation token to discard stale responses - no second cancellation
+  mechanism built. Result previews come from cross-referencing each
+  worker's `matchingIds` against that chat's `messagesById` (already
+  populated by the existing index pass) - no worker changes needed. New
+  `SearchResultsPanel.svelte` (same slide-in family as Bookmarks/Gallery/
+  Info, `.search-panel` CSS) is deliberately **not** folded into Fase 5's
+  live chat-list filter - a new "Search messages for ..." row in
+  `ChatList.svelte` triggers it explicitly (passing the filter text
+  through as the initial query), keeping Fase 5's already-shipped
+  behavior untouched and avoiding running N-worker search on every
+  keystroke of a casual list filter. Unlike its panel siblings, mounted
+  conditionally (`{#if showCrossChatSearch}`) rather than always-mounted-
+  CSS-hidden, since opening it has a real cost (spawning N workers).
+  Joins the existing panel mutual-exclusion group (now 6-way).
 
 ### Separately-tracked, not part of the 6-phase redesign
 
