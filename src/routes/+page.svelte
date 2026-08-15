@@ -53,6 +53,7 @@ let chatFileReferences = $state<
 </script>
 
 <script lang="ts">
+import JSZip from 'jszip';
 import { tick } from 'svelte';
 import { browser } from '$app/environment';
 import favicon from '$lib/assets/favicon.png';
@@ -987,6 +988,83 @@ function handleExportChat() {
 		`${sanitizeFilename(appState.selectedChat.title)}.html`,
 	);
 	showToast(m.export_chat_success());
+}
+
+let isBackingUpChat = $state(false);
+let backupProgress = $state(0);
+
+// Mirrors MediaGallery.svelte's makeUniqueFilename - small enough to
+// duplicate rather than share across an unrelated component boundary.
+function makeUniqueBackupFilename(
+	name: string,
+	seen: Map<string, number>,
+): string {
+	const safe = sanitizeFilename(name);
+	const prev = seen.get(safe) ?? 0;
+	seen.set(safe, prev + 1);
+	if (prev === 0) return safe;
+	const dot = safe.lastIndexOf('.');
+	if (dot <= 0) return `${safe} (${prev + 1})`;
+	const base = safe.slice(0, dot);
+	const ext = safe.slice(dot);
+	return `${base} (${prev + 1})${ext}`;
+}
+
+// Downloads the currently open chat as a self-contained ZIP (transcript +
+// every media file, flat at the ZIP root like a real WhatsApp export) -
+// distinct from handleExportChat's HTML-only, no-media export above.
+async function handleBackupChatAsZip() {
+	const chat = appState.selectedChat;
+	if (!chat || isBackingUpChat) return;
+
+	isBackingUpChat = true;
+	backupProgress = 0;
+
+	try {
+		const zip = new JSZip();
+
+		// rawLine already holds each message's verbatim source text
+		// (chat-parser.ts) - no reverse-parser needed. Naming the file
+		// "WhatsApp Chat with {title}.txt" (not "_chat.txt") round-trips
+		// back to the same title if this backup is ever re-imported - see
+		// handleMergeChats's identical trick above.
+		const chatText = chat.messages.map((msg) => msg.rawLine).join('\n');
+		zip.file(`WhatsApp Chat with ${chat.title}.txt`, chatText);
+
+		const seenNames = new Map<string, number>();
+		let skippedCount = 0;
+		const total = chat.mediaFiles.length;
+		for (let i = 0; i < total; i++) {
+			const media = chat.mediaFiles[i];
+			if (!mediaFileHasSource(media)) {
+				skippedCount++;
+				continue;
+			}
+			const filename = makeUniqueBackupFilename(media.name, seenNames);
+			const bytes = await getMediaBytes(media);
+			zip.file(filename, bytes);
+			backupProgress = Math.round(((i + 1) / total) * 100);
+		}
+
+		const outBlob = await zip.generateAsync({ type: 'blob' });
+		const date = new Date().toISOString().split('T')[0];
+		triggerDownload(
+			outBlob,
+			`whats-reader-backup-${sanitizeFilename(chat.title)}-${date}.zip`,
+		);
+		showToast(
+			skippedCount > 0
+				? m.chat_backup_success_with_skipped({ count: skippedCount })
+				: m.chat_backup_success(),
+			'success',
+		);
+	} catch (e) {
+		console.error('Failed to back up chat as ZIP:', e);
+		showToast(m.chat_backup_failed(), 'error');
+	} finally {
+		isBackingUpChat = false;
+		backupProgress = 0;
+	}
 }
 
 async function handleMergeChats(otherChats: ChatData[], mergedTitle: string) {
@@ -2043,6 +2121,15 @@ async function handleForgotPin() {
 										<ListItemButton
 											onclick={() => {
 												showChatOptionsDropdown = false;
+												handleBackupChatAsZip();
+											}}
+										>
+											<Icon name="archive" size="sm" />
+											<span>{m.chat_backup_zip()}</span>
+										</ListItemButton>
+										<ListItemButton
+											onclick={() => {
+												showChatOptionsDropdown = false;
 												showMergeChatsModal = true;
 											}}
 										>
@@ -2138,6 +2225,23 @@ async function handleForgotPin() {
 								aria-label={m.export_chat()}
 							>
 								<Icon name="download" size="md" />
+							</IconButton>
+							<IconButton
+								theme="dark"
+								size="md"
+								class="relative"
+								onclick={handleBackupChatAsZip}
+								disabled={isBackingUpChat}
+								aria-busy={isBackingUpChat}
+								title={isBackingUpChat ? m.chat_backup_preparing({ progress: backupProgress }) : m.chat_backup_zip()}
+								aria-label={m.chat_backup_zip()}
+							>
+								<Icon name="archive" size="md" />
+								{#if isBackingUpChat}
+									<span class="absolute -top-1 -right-1 px-1.5 py-0.5 rounded-full bg-black/35 text-[10px] text-white/90 tabular-nums">
+										{backupProgress}%
+									</span>
+								{/if}
 							</IconButton>
 							<IconButton
 								theme="dark"
