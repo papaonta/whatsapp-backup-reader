@@ -220,9 +220,17 @@ broken - it may just be another concurrent session's work, already safe.
   **not** implemented. The lock is a UI gate, not encryption (data sits
   plaintext in IndexedDB) - deliberate, not a bug. Don't "fix" this
   without discussing first.
-- Mobile reachability of Archived - noted during the Fase 3 audit:
-  Archived is currently only reachable via the desktop-only rail. Real
-  gap, not introduced by any single phase, not yet fixed.
+- **Mobile reachability of Archived (done):** added a small `archive`-
+  icon `IconButton` to the sidebar's "Chats title bar" row in
+  `+page.svelte` (the search input + "+" import row, which unlike
+  `IconRail` is NOT `md:`-gated), right after the import button. Wired
+  with the identical mutual-exclusion reset used by the rail's own
+  `onSelectArchived` handler. Reused the existing `rail_archived` i18n
+  key rather than adding a new one. Verified live at 375px width via
+  Playwright: rail confirmed hidden, new icon reachable and opens the
+  Archived view (back-chevron returns correctly), and confirmed no
+  regression/overflow at desktop width (both rail and sidebar triggers
+  present side by side).
 
 ## Working conventions established across sessions (don't relitigate)
 

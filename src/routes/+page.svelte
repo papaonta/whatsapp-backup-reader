@@ -2399,6 +2399,22 @@ async function handleForgotPin() {
 							>
 								<Icon name="plus" size="md" />
 							</IconButton>
+							<IconButton
+								theme="light"
+								size="lg"
+								onclick={() => {
+									showArchivedView = true;
+									showBookmarks = false;
+									showSettingsView = false;
+									showMediaGallery = false;
+									showChatInfo = false;
+									closeCrossChatSearch();
+								}}
+								aria-label={m.rail_archived()}
+								title={m.rail_archived()}
+							>
+								<Icon name="archive" size="md" />
+							</IconButton>
 						</div>
 					{/if}
 					<input
