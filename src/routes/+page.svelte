@@ -58,6 +58,7 @@ import { browser } from '$app/environment';
 import favicon from '$lib/assets/favicon.png';
 import { getAutoUpdaterState, initAutoUpdater } from '$lib/auto-updater.svelte';
 import { bookmarksState } from '$lib/bookmarks.svelte';
+import { crossChatSearchState } from '$lib/cross-chat-search.svelte';
 import { defaultIdentityState } from '$lib/default-identity.svelte';
 import { galleryState } from '$lib/gallery.svelte';
 import {
@@ -88,6 +89,7 @@ import MediaGallery from '$lib/components/MediaGallery.svelte';
 import MergeChatsModal from '$lib/components/MergeChatsModal.svelte';
 import OnThisDayBanner from '$lib/components/OnThisDayBanner.svelte';
 import ReselectFileModal from '$lib/components/ReselectFileModal.svelte';
+import SearchResultsPanel from '$lib/components/SearchResultsPanel.svelte';
 import SettingsSection from '$lib/components/SettingsSection.svelte';
 import Toast from '$lib/components/Toast.svelte';
 import { resolveUniqueChatTitle } from '$lib/helpers/chat-title';
@@ -185,6 +187,8 @@ let showArchivedView = $state(false);
 let chatSearchQuery = $state('');
 let showMediaGallery = $state(false);
 let showChatInfo = $state(false);
+let showCrossChatSearch = $state(false);
+let crossChatSearchInitialQuery = $state('');
 let participantStats = $state<Map<string, number> | null>(null);
 let scrollToMessageId = $state<string | null>(null);
 let showMergeChatsModal = $state(false);
@@ -226,6 +230,21 @@ function toggleChatInfo() {
 	showChatInfo = true;
 	showBookmarks = false;
 	showMediaGallery = false;
+	closeCrossChatSearch();
+}
+
+function openCrossChatSearch(query: string) {
+	crossChatSearchInitialQuery = query;
+	showCrossChatSearch = true;
+	showBookmarks = false;
+	showMediaGallery = false;
+	showChatInfo = false;
+}
+
+function closeCrossChatSearch() {
+	if (!showCrossChatSearch) return;
+	showCrossChatSearch = false;
+	crossChatSearchState.teardown();
 }
 let showPerspectiveDropdown = $state(false);
 let perspectiveSearchQuery = $state('');
@@ -797,6 +816,7 @@ function toggleBookmarks() {
 	if (showBookmarks) {
 		showMediaGallery = false;
 		showChatInfo = false;
+		closeCrossChatSearch();
 	}
 }
 
@@ -806,6 +826,7 @@ function toggleMediaGallery() {
 		galleryState.setViewMode('chat');
 		showBookmarks = false;
 		showChatInfo = false;
+		closeCrossChatSearch();
 	}
 }
 
@@ -1715,6 +1736,7 @@ async function handleForgotPin() {
 			showSettingsView = false;
 			showMediaGallery = false;
 			showChatInfo = false;
+			closeCrossChatSearch();
 		}}
 		onSelectStarred={() => {
 			showBookmarks = true;
@@ -1722,6 +1744,7 @@ async function handleForgotPin() {
 			showSettingsView = false;
 			showMediaGallery = false;
 			showChatInfo = false;
+			closeCrossChatSearch();
 		}}
 		onSelectArchived={() => {
 			showArchivedView = true;
@@ -1729,6 +1752,7 @@ async function handleForgotPin() {
 			showSettingsView = false;
 			showMediaGallery = false;
 			showChatInfo = false;
+			closeCrossChatSearch();
 		}}
 		onSelectAllMedia={() => {
 			galleryState.setViewMode('all');
@@ -1737,6 +1761,7 @@ async function handleForgotPin() {
 			showArchivedView = false;
 			showSettingsView = false;
 			showChatInfo = false;
+			closeCrossChatSearch();
 		}}
 		onOpenSettings={() => {
 			showSettingsView = true;
@@ -1744,6 +1769,7 @@ async function handleForgotPin() {
 			showArchivedView = false;
 			showMediaGallery = false;
 			showChatInfo = false;
+			closeCrossChatSearch();
 		}}
 	/>
 	<div class="flex-1 flex flex-col overflow-hidden">
@@ -2302,6 +2328,7 @@ async function handleForgotPin() {
 						onToggleArchive={handleToggleArchive}
 						showArchivedOnly={showArchivedView}
 						nameFilter={chatSearchQuery}
+					onSearchMessages={openCrossChatSearch}
 						{chatsNeedingReselect}
 						onOpenReselect={handleOpenReselectChat}
 					/>
@@ -2497,6 +2524,25 @@ async function handleForgotPin() {
 						onClose={() => (showBookmarks = false)}
 						indexedChatTitles={appState.indexedChatTitles}
 					/>
+				</div>
+			</div>
+
+			<!-- Cross-chat message search panel (slide from right) - mounted
+			     conditionally (unlike its siblings above) since opening it spawns
+			     one search worker per loaded chat; no reason to pay that cost
+			     before the user actually asks for it. -->
+			<div
+				class="search-panel w-96 flex-shrink-0 border-l border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 flex flex-col {showCrossChatSearch ? 'search-open' : 'search-closed'}"
+				class:electron-mac={isElectronMac}
+			>
+				<div class="flex-1 overflow-hidden">
+					{#if showCrossChatSearch}
+						<SearchResultsPanel
+							initialQuery={crossChatSearchInitialQuery}
+							onNavigateToMessage={handleNavigateToMediaMessage}
+							onClose={closeCrossChatSearch}
+						/>
+					{/if}
 				</div>
 			</div>
 		</div>

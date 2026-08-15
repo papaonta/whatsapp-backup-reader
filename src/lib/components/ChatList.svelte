@@ -32,6 +32,10 @@ interface Props {
 	// name (see +page.svelte's chatSearchQuery). Not full-text message
 	// search (a separate, bigger feature).
 	nameFilter?: string;
+	// Opens the cross-chat message-content search panel, seeded with the
+	// current nameFilter text (Fase 6d) - a distinct feature from nameFilter
+	// above, not wired to it beyond sharing the initial query text.
+	onSearchMessages?: (query: string) => void;
 	// Web-only: chats that couldn't restore without a fresh user gesture -
 	// rendered as click-to-reopen placeholders (see +page.svelte's
 	// handleOpenReselectChat).
@@ -55,6 +59,7 @@ let {
 	onToggleArchive,
 	showArchivedOnly = false,
 	nameFilter = '',
+	onSearchMessages,
 	chatsNeedingReselect = [],
 	onOpenReselect,
 }: Props = $props();
@@ -361,6 +366,17 @@ const sortedChatIndices = $derived.by(() => {
 					</div>
 				</div>
 			{/each}
+		{/if}
+
+		{#if nameFilter.trim() && onSearchMessages}
+			<button
+				type="button"
+				class="w-full flex items-center gap-2 px-4 py-3 text-sm text-[var(--color-whatsapp-teal)] hover:bg-gray-50 dark:hover:bg-gray-800 border-t border-gray-100 dark:border-gray-800 cursor-pointer"
+				onclick={() => onSearchMessages?.(nameFilter.trim())}
+			>
+				<Icon name="search" size="sm" />
+				{m.global_search_trigger({ query: nameFilter.trim() })}
+			</button>
 		{/if}
 	</div>
 
