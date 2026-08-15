@@ -1655,7 +1655,10 @@ async function handleForgotPin() {
 			showBookmarks = false;
 			showArchivedView = false;
 		}}
-		onSelectStarred={() => (showBookmarks = true)}
+		onSelectStarred={() => {
+			showBookmarks = true;
+			showArchivedView = false;
+		}}
 		onSelectArchived={() => {
 			showArchivedView = true;
 			showBookmarks = false;
