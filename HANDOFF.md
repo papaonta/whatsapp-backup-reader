@@ -1,122 +1,109 @@
 # Session Handoff
 
-Personal note for continuing this fork's work in a fresh Claude Code session
-(e.g. on a different machine). Not part of the upstream project — delete
-anytime, or keep it as your own running log.
+Personal running log for continuing this fork's work in a fresh Claude Code
+session (new chat window, or a different machine). Not part of the
+upstream project — delete anytime, or keep updating it.
 
-## Paste this as your first message in the new session
-
-Works from any empty folder — Claude clones the repo, installs deps, and
-reads the rest of the context itself.
+## Paste this as your first message in a new session
 
 ```
-Clone https://github.com/papaonta/whatsapp-backup-reader.git ke folder ini,
-lalu npm install. Kalau npm install minta approve scripts (electron, sharp,
-esbuild, dll — biasanya udah nggak perlu karena allowScripts udah ke-commit
-di package.json, tapi jaga-jaga), jalanin npm approve-scripts
---allow-scripts-pending. Setelah itu jalanin npm run dev buat mastiin
-jalan normal di localhost:5173.
-
-Ini fork pribadi dari open-source "WhatsApp Backup Reader" (SvelteKit +
-Svelte 5 + Electron). Sebelum mulai kerja apapun, baca HANDOFF.md di root
-repo ini — itu rangkuman lengkap dari sesi sebelumnya (di Windows): apa
-yang udah dibangun, kenapa, gimana cara ngetesnya, dan gap yang sengaja
-dibiarin. Remote "origin" itu upstream (read-only), remote yang bisa
-di-push itu "mine" (papaonta/whatsapp-backup-reader) — tambahin remote
-"mine" itu juga kalau belum ada, arahnya sama kayak URL clone di atas.
-
-Ringkas: sesi sebelumnya saya (1) fix bug "Page Unresponsive" Chrome yang
-muncul tiap kali app pakai showOpenFilePicker() — solusinya ganti ke
-<input type="file"> biasa di semua tempat (FileDropZone, ReselectFileModal,
-sidebar import); dan (2) bikin fitur baru "Chat Lock" per-chat (PIN +
-opsional WebAuthn/Windows Hello/Touch ID) mirip fitur Chat Lock WhatsApp
-asli — lihat src/lib/components/LockPinModal.svelte, LockedChatPane.svelte,
-src/lib/helpers/lock-crypto.ts, webauthn.ts.
-
-Sebelum nyaranin/ngubah apapun soal fitur lock ini, penting: ini CUMA UI
-gate lokal, BUKAN enkripsi (data chat tetap plaintext di IndexedDB) —
-itu keputusan sadar, bukan bug, karena app-nya emang 100% local/no-server.
-Jangan asumsikan perlu "diperbaiki" jadi encrypted tanpa didiskusiin dulu.
+Lanjut kerjain whats-reader (repo ini / clone
+https://github.com/papaonta/whatsapp-backup-reader.git kalau folder ini
+kosong, terus npm install). Baca HANDOFF.md di root repo dulu sebelum
+mulai apapun - itu rangkuman status terakhir: redesign 6-fase yang lagi
+jalan, fase mana yang udah kelar, dan keputusan-keputusan yang udah
+diambil biar gak diulang tanya. Remote "origin" = upstream (read-only),
+remote "mine" = papaonta/whatsapp-backup-reader (push target).
 ```
 
-## What got built this session
+## Current status (as of commit `3ffef01`, 2026-08-15)
 
-1. **Fixed a Chrome "Page Unresponsive" false-positive** — every call site
-   using `showOpenFilePicker()` (File System Access API) triggered it while
-   the native dialog was open. Replaced with plain `<input type="file">`
-   everywhere except the drag-and-drop path (which still captures a
-   `FileSystemFileHandle` safely via `getAsFileSystemHandle()` +
-   `Promise.allSettled`, not `Promise.all` — the original drag-drop bug was
-   a single rejected item in `Promise.all` silently killing the whole
-   drop). `openZipFilePicker()` in `src/lib/helpers/file-picker.ts` was
-   fully removed as dead code once nothing called it anymore.
+Working through a 6-phase WhatsApp-Desktop-style redesign, brainstormed
+and broken down across several sessions. **Fase 1 and Fase 2 are shipped
+and pushed to `mine/main`.**
 
-2. **Per-chat "Chat Lock" feature**, modeled on WhatsApp's own Chat Lock:
-   - PIN set once, shared across all locked chats, hashed with PBKDF2
-     (`src/lib/helpers/lock-crypto.ts`), stored in IndexedDB via
-     `src/lib/persistence.svelte.ts` (`getLockPin`/`setLockPin`/`clearLockPin`).
-   - Locking a chat hides its sidebar preview and gates the *entire* right
-     pane (header, messages, Media Gallery, Bookmarks, Stats — confirmed via
-     code read that they're all inside the same conditional block, not
-     separately gated).
-   - Unlocking is **session-scoped**: entering the PIN reveals a chat until
-     you navigate away (auto re-locks — see the `previousSelectedChatTitle`
-     `$effect` in `+page.svelte`, mirrors `ChatView.svelte`'s
-     `previousChatId` pattern) or click the manual "Lock now" button. Full
-     removal of the lock (vs. just viewing) is a separate action requiring
-     the PIN, labeled "Remove lock" in the chat's context menu.
-   - "Forgot PIN" only appears after a failed attempt, and requires typing
-     "RESET" to confirm — deliberate friction, not real security (see
-     below).
-   - Optional **WebAuthn biometric unlock** (Windows Hello / Touch ID /
-     etc.) via `src/lib/helpers/webauthn.ts`, offered as a checkbox at PIN
-     setup and after a correct PIN entry (never before — enrollment must
-     never be possible without first proving PIN knowledge). Guarded by an
-     `AbortController` + a visible "Waiting for {label}..." state, because
-     the WebAuthn `timeout` option alone isn't reliably honored and a
-     stuck/unanswered OS prompt used to hang the modal with zero feedback.
+- **Fase 1 — Persistent chat list (done):** every saved chat now just
+  appears on launch (no restore-prompt modal, no per-chat remember/forget
+  toggle). Old Remove/Forget/X actions replaced by a single confirmed
+  "Delete Chat". Shipped along with several real bugs found through
+  hands-on testing afterward: duplicate-import detection missing for
+  Android exports, "Update" creating duplicates instead of replacing,
+  restored chats losing their disambiguated title, merged chats not
+  surviving restart, and two separate app-lock/chat-lock duplication bugs
+  (root cause both times: `+layout.svelte`'s lock gate fully remounts
+  `+page.svelte`, so any state that needs to survive that remount must
+  live in a `<script module>` block, not a regular instance-scoped
+  `$state` — this bit twice, watch for it a third time before adding new
+  per-chat state in `+page.svelte`).
+- **Fase 2 — Icon rail + empty states (done):** new `IconRail.svelte`,
+  vertical strip left of the sidebar (Chats/Archived/Starred/All
+  Media/Settings, desktop-width only — `hidden md:flex`). Archived and
+  All Media are **inert placeholders** this phase (disabled, tooltip
+  "Coming soon") - their real functionality is later phases. "Starred" =
+  the existing Bookmarks feature relabeled, not renamed internally
+  (`bookmarksState`/`BookmarksPanel.svelte` file names, data model
+  untouched) - it was already a cross-chat-capable singleton, just never
+  mounted outside the selected-chat branch; fixed by moving its mount
+  point to be a sibling of the sidebar. Also: chat list now sorts by
+  `chat.endDate` (last message timestamp) instead of import/restore
+  order, and the empty-import screen's "How to export"/"Privacy &
+  Security" collapsibles were removed (redundant with the onboarding
+  wizard added since that screen was last touched).
+- **Not started yet — Fase 3:** Archive & Delete. New `archived` field on
+  persisted chat metadata, filter the chat list by it, give the rail's
+  Archived icon a real destination. (Delete itself already works, from
+  Fase 1.)
+- **Not started yet — Fase 4:** Settings becomes a full section instead
+  of a modal (currently `SettingsModal.svelte`, opened from 3 places incl.
+  the new rail's Settings icon - all 3 triggers were deliberately kept on
+  purpose, not consolidated, so mobile/narrow widths - where the rail is
+  hidden - still have a way in). Add a storage-usage stat while at it.
+- **Not started yet — Fase 5:** relocate the import button, add a search
+  bar to filter the chat list.
+- **Not started yet — Fase 6 (bigger, standalone, optional/later):** "View
+  as" as a global profile concept, search across all chats' message
+  content, a per-chat info panel. Also where "All Media" (cross-chat
+  media aggregation across all open chats' `mediaFiles`) should get its
+  real implementation - `gallery.svelte.ts`/`MediaGallery.svelte` are
+  currently 100% single-chat scoped (`appState.selectedChat` only), so
+  this needs genuinely new aggregation logic, not just a new mount point.
 
-## Threat model — read before touching this again
+### Separately-tracked, not part of the 6-phase redesign
 
-This is explicitly a **local UI gate, not encryption at rest**. Chat/media
-data sits unencrypted in IndexedDB and in the loaded ZIP regardless of lock
-state. Demonstrated live: the PIN hash record is trivially readable (and
-deletable) from the browser's own DevTools console via
-`indexedDB.open('keyval-store')` — anyone with console access bypasses
-everything, no PIN needed. This is accepted as the ceiling for a
-no-server, no-account app; the point is stopping a casual glance
-(someone briefly holding your unlocked device), not a technical/malicious
-local user. If a stronger promise is ever wanted, that's a real encryption
-project (derive a key from the PIN, encrypt chat content), not a small
-patch — don't half-do it.
+- Backup-ZIP-download (export full chat+media back out as a ZIP) - not
+  started.
+- Web/browser architecture rework so it can handle large ZIPs the way
+  Electron does (currently Electron-only optimization) - not started.
+- Cancel button for an in-progress extraction - not started.
+- Windows testing - not done this fork.
+- At-rest encryption for the PIN-lock feature - discussed, explicitly
+  **not** implemented. The lock is a UI gate, not encryption (data sits
+  plaintext in IndexedDB) - deliberate, not a bug. Don't "fix" this
+  without discussing first.
 
-## Verification performed
+## Working conventions established across sessions (don't relitigate)
 
-Installed Playwright + Chromium into a scratch npm project (not a repo
-dependency) specifically to drive real browser tests, since no browser
-automation tool was otherwise available. Ran ~34 automated UI checks
-across the lock flows (setup, wrong PIN, forgot-PIN friction, auto
-re-lock, Lock-now, WebAuthn register/verify via a CDP virtual
-authenticator) plus a live IndexedDB dump to prove the bypass claim above.
-All passed after the WebAuthn timeout fix. `npm run check` is clean.
-Electron's packaged build (`app://` custom scheme) was **not** empirically
-tested for WebAuthn — only reasoned about from `electron/main.cjs`'s
-`protocol.registerSchemesAsPrivileged` config (`secure: true` there, so it
-*should* work, but hasn't been built and run to confirm).
-
-## Known, accepted gaps (not TODOs unless you want them to be)
-
-- `lockedByChat` / `unlockedThisSession` entries aren't cleaned up when a
-  chat is removed via "Remove chat" — harmless stale Map/Set entries,
-  matches the pre-existing convention for `languageByChat` etc.
-- New `lock_*` / `chat_remove_lock` i18n keys only exist in `messages/en.json`.
-  The other 9 locale files were left as-is on purpose — the user only
-  needs EN/ID, and machine-translating strings nobody will read/verify
-  was judged not worth doing. Backfill later with `npm run machine-translate`
-  if that ever changes.
+- New i18n keys: only add to `messages/en.json`. Never hand-translate to
+  the other 9 locales (`npm run machine-translate` exists for that if it's
+  ever actually needed).
+- Never `npx biome` — always `./node_modules/.bin/biome check/format
+  --write <files>` directly (bare `npx biome` pulls the wrong version).
+- Verify UI changes live before calling them done - dev server
+  (`npm run dev`, localhost:5173) + a throwaway Playwright script against
+  a real browser for web-only changes; for Electron-specific behavior
+  (extraction, file paths, app-lock), launch Electron with an isolated
+  `--user-data-dir` and CDP-attach (`--remote-debugging-port=9222`),
+  never the real user profile.
+- Commit after each verified fix/feature (not batched), build a fresh
+  `.dmg` when asked (`CSC_IDENTITY_AUTO_DISCOVERY=false npm run
+  electron:build:mac` - the GitHub-publish step at the end always fails
+  with a missing-token error, that's expected/harmless, the `.dmg` itself
+  is already written to `dist-electron/` by then), and report back with a
+  concrete manual test scenario. Never push without explicit confirmation
+  in the conversation, even after a prior push was approved.
 
 ## Remotes
 
 - `origin` → `rodrigogs/whats-reader` (upstream, read-only for us)
-- `mine` → `papaonta/whatsapp-backup-reader` (private fork, push target)
-  Current workflow: `git push mine dev:main`.
+- `mine` → `papaonta/whatsapp-backup-reader` (private fork, push target),
+  workflow: `git push mine main`.
