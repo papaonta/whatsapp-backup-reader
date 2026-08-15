@@ -426,6 +426,31 @@ async function pruneOrphans(extractionRoot, keepExtractionIds) {
 	return { removed };
 }
 
+// Recursively sums file sizes under `dir` - used for the Settings section's
+// storage-usage stat. Missing directory (nothing extracted yet) is 0 bytes,
+// not an error, same as pruneOrphans' ENOENT handling above.
+async function getDirectorySize(dir) {
+	let dirEntries;
+	try {
+		dirEntries = await fs.promises.readdir(dir, { withFileTypes: true });
+	} catch (error) {
+		if (error.code === 'ENOENT') return 0;
+		throw error;
+	}
+
+	let total = 0;
+	for (const dirEntry of dirEntries) {
+		const entryPath = path.join(dir, dirEntry.name);
+		if (dirEntry.isDirectory()) {
+			total += await getDirectorySize(entryPath);
+		} else if (dirEntry.isFile()) {
+			const stat = await fs.promises.stat(entryPath);
+			total += stat.size;
+		}
+	}
+	return total;
+}
+
 // Mirrors src/lib/parser/zip-parser.ts's getMimeType() - kept as a small,
 // independently duplicated table rather than shared build tooling between
 // the main process (CJS) and the renderer (TS/Vite).
@@ -542,4 +567,5 @@ module.exports = {
 	loadManifest,
 	deleteExtractionDir,
 	pruneOrphans,
+	getDirectorySize,
 };

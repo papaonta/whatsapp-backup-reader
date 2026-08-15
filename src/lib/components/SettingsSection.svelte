@@ -1,5 +1,6 @@
 <script lang="ts">
 import { appLockState } from '$lib/app-lock.svelte';
+import { formatFileSize } from '$lib/helpers/document-utils';
 import * as m from '$lib/paraglide/messages';
 import {
 	clearLockPin,
@@ -9,15 +10,15 @@ import {
 import AppLockGate from './AppLockGate.svelte';
 import Button from './Button.svelte';
 import Icon from './Icon.svelte';
-import Modal from './Modal.svelte';
-import ModalContent from './ModalContent.svelte';
-import ModalHeader from './ModalHeader.svelte';
+import LocaleSwitcher from './LocaleSwitcher.svelte';
 
 interface Props {
-	onClose: () => void;
+	onBack: () => void;
+	isDarkMode: boolean;
+	onToggleDarkMode: () => void;
 }
 
-let { onClose }: Props = $props();
+let { onBack, isDarkMode, onToggleDarkMode }: Props = $props();
 
 let hasPin = $state(false);
 let overlay = $state<'none' | 'setup' | 'verify-change' | 'verify-remove'>(
@@ -25,10 +26,39 @@ let overlay = $state<'none' | 'setup' | 'verify-change' | 'verify-remove'>(
 );
 let pendingEnableAfterSetup = $state(false);
 
+let storageBytes = $state<number | null>(null);
+let storageError = $state(false);
+
 $effect(() => {
 	getLockPin().then((pin) => {
 		hasPin = !!pin;
 	});
+});
+
+$effect(() => {
+	const extractionApi = window.electronAPI?.isElectron
+		? window.electronAPI.extraction
+		: undefined;
+	if (extractionApi) {
+		extractionApi.getStorageUsage().then((result) => {
+			if (result.success) {
+				storageBytes = result.bytes;
+			} else {
+				storageError = true;
+			}
+		});
+	} else if (navigator.storage?.estimate) {
+		navigator.storage
+			.estimate()
+			.then((estimate) => {
+				storageBytes = estimate.usage ?? 0;
+			})
+			.catch(() => {
+				storageError = true;
+			});
+	} else {
+		storageError = true;
+	}
 });
 
 async function refreshPinStatus() {
@@ -107,14 +137,50 @@ async function handleVerifySuccess() {
 
 function handleLockNow() {
 	appLockState.lockNow();
-	onClose();
 }
 </script>
 
-<Modal open={true} {onClose}>
-	<ModalHeader icon="settings" title={m.settings_title()} {onClose} closeLabel={m.close()} />
-	<ModalContent>
-		<div class="flex flex-col gap-5">
+<div class="flex-1 overflow-y-auto bg-white dark:bg-gray-900">
+	<div class="max-w-2xl mx-auto p-6">
+		<button
+			type="button"
+			class="flex items-center gap-1 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 cursor-pointer mb-4"
+			onclick={onBack}
+		>
+			<Icon name="chevron-left" size="sm" />
+			{m.archived_chats_back()}
+		</button>
+
+		<div class="flex flex-col gap-6">
+			<section>
+				<h3 class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2">
+					{m.settings_appearance_section()}
+				</h3>
+				<div class="flex items-center justify-between py-2">
+					<p class="text-sm font-medium text-gray-800 dark:text-gray-100">{m.toggle_dark_mode()}</p>
+					<button
+						type="button"
+						role="switch"
+						aria-checked={isDarkMode}
+						aria-label={m.toggle_dark_mode()}
+						onclick={onToggleDarkMode}
+						class="relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full transition-colors cursor-pointer {isDarkMode ? 'bg-[var(--color-whatsapp-teal)]' : 'bg-gray-300 dark:bg-gray-600'}"
+					>
+						<span class="inline-block h-4 w-4 transform rounded-full bg-white transition-transform {isDarkMode ? 'translate-x-6' : 'translate-x-1'}"></span>
+					</button>
+				</div>
+			</section>
+
+			<section>
+				<h3 class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2">
+					{m.settings_language_section()}
+				</h3>
+				<div class="flex items-center justify-between py-2">
+					<p class="text-sm font-medium text-gray-800 dark:text-gray-100">{m.language_change()}</p>
+					<LocaleSwitcher variant="default" />
+				</div>
+			</section>
+
 			<section>
 				<h3 class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2">
 					{m.settings_app_lock_section()}
@@ -190,9 +256,21 @@ function handleLockNow() {
 					</div>
 				</section>
 			{/if}
+
+			<section>
+				<h3 class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2">
+					{m.settings_storage_section()}
+				</h3>
+				<div class="bg-gray-50 dark:bg-gray-800 rounded-lg p-4 text-center">
+					<div class="text-2xl font-bold text-[var(--color-whatsapp-teal)]">
+						{storageError ? '—' : storageBytes === null ? '…' : formatFileSize(storageBytes)}
+					</div>
+					<div class="text-sm text-gray-500 dark:text-gray-400">{m.settings_storage_used()}</div>
+				</div>
+			</section>
 		</div>
-	</ModalContent>
-</Modal>
+	</div>
+</div>
 
 {#if overlay === 'setup'}
 	<AppLockGate mode="setup" onSuccess={handleSetupSuccess} onCancel={cancelOverlay} />

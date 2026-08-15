@@ -40,6 +40,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
 			ipcRenderer.invoke('extraction:deleteDir', extractionDir),
 		pruneOrphans: (keepExtractionIds) =>
 			ipcRenderer.invoke('extraction:pruneOrphans', keepExtractionIds),
+		getStorageUsage: () => ipcRenderer.invoke('extraction:getStorageUsage'),
 		onProgress: (callback) => {
 			const subscription = (_event, data) => callback(data);
 			ipcRenderer.on('extraction:progress', subscription);

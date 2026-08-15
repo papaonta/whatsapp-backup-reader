@@ -108,6 +108,9 @@ interface ElectronAPI {
 		pruneOrphans: (
 			keepExtractionIds: string[],
 		) => Promise<ExtractionPruneResult>;
+		getStorageUsage: () => Promise<
+			{ success: true; bytes: number } | { success: false; error: string }
+		>;
 		onProgress: (callback: (data: ExtractionProgress) => void) => () => void;
 	};
 }

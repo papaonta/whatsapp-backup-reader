@@ -19,6 +19,7 @@ const {
 	loadManifest: loadExtractionManifest,
 	deleteExtractionDir,
 	pruneOrphans: pruneOrphanedExtractions,
+	getDirectorySize,
 	resolveMediaFilePath,
 	buildMediaFileResponse,
 } = require('./lib/extract-zip.cjs');
@@ -471,6 +472,18 @@ ipcMain.handle('extraction:pruneOrphans', async (_event, keepExtractionIds) => {
 		const ids = Array.isArray(keepExtractionIds) ? keepExtractionIds : [];
 		const result = await pruneOrphanedExtractions(getExtractionRoot(app), ids);
 		return { success: true, ...result };
+	} catch (error) {
+		return {
+			success: false,
+			error: error instanceof Error ? error.message : String(error),
+		};
+	}
+});
+
+ipcMain.handle('extraction:getStorageUsage', async () => {
+	try {
+		const bytes = await getDirectorySize(getExtractionRoot(app));
+		return { success: true, bytes };
 	} catch (error) {
 		return {
 			success: false,

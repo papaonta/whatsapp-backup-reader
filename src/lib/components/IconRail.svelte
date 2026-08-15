@@ -3,7 +3,7 @@ import * as m from '$lib/paraglide/messages';
 import Icon from './Icon.svelte';
 
 interface Props {
-	activeItem: 'chats' | 'starred' | 'archived';
+	activeItem: 'chats' | 'starred' | 'archived' | 'settings';
 	onSelectChats: () => void;
 	onSelectStarred: () => void;
 	onSelectArchived: () => void;
@@ -73,7 +73,7 @@ const baseClasses =
 
 	<button
 		type="button"
-		class="{baseClasses} {inactiveClasses} mt-auto"
+		class="{baseClasses} {activeItem === 'settings' ? activeClasses : inactiveClasses} mt-auto"
 		onclick={onOpenSettings}
 		aria-label={m.rail_settings()}
 		title={m.rail_settings()}

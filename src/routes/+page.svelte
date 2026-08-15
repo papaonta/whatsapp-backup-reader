@@ -88,7 +88,7 @@ import ModalContent from '$lib/components/ModalContent.svelte';
 import ModalHeader from '$lib/components/ModalHeader.svelte';
 import OnThisDayBanner from '$lib/components/OnThisDayBanner.svelte';
 import ReselectFileModal from '$lib/components/ReselectFileModal.svelte';
-import SettingsModal from '$lib/components/SettingsModal.svelte';
+import SettingsSection from '$lib/components/SettingsSection.svelte';
 import Toast from '$lib/components/Toast.svelte';
 import { resolveUniqueChatTitle } from '$lib/helpers/chat-title';
 import { triggerDownload } from '$lib/helpers/download';
@@ -187,7 +187,7 @@ let showParticipants = $state(false);
 let participantStats = $state<Map<string, number> | null>(null);
 let scrollToMessageId = $state<string | null>(null);
 let showMergeChatsModal = $state(false);
-let showSettingsModal = $state(false);
+let showSettingsView = $state(false);
 
 // Toast notification state
 let toastMessage = $state<string | null>(null);
@@ -680,6 +680,11 @@ async function handleFilesSelected(
 }
 
 function handleSelectChat(index: number) {
+	// Settings occupies the same main-content slot as a chat (unlike
+	// showArchivedView/showBookmarks, which are independent sidebar-filter/
+	// overlay state and don't need resetting here) - selecting a chat must
+	// exit it.
+	showSettingsView = false;
 	appState.selectChat(index);
 	// Set the transcription language for this chat
 	const chat = appState.chats[index];
@@ -1650,49 +1655,48 @@ async function handleForgotPin() {
 
 	<div class="flex-1 flex overflow-hidden">
 	<IconRail
-		activeItem={showArchivedView ? 'archived' : showBookmarks ? 'starred' : 'chats'}
+		activeItem={showSettingsView ? 'settings' : showArchivedView ? 'archived' : showBookmarks ? 'starred' : 'chats'}
 		onSelectChats={() => {
 			showBookmarks = false;
 			showArchivedView = false;
+			showSettingsView = false;
 		}}
 		onSelectStarred={() => {
 			showBookmarks = true;
 			showArchivedView = false;
+			showSettingsView = false;
 		}}
 		onSelectArchived={() => {
 			showArchivedView = true;
 			showBookmarks = false;
+			showSettingsView = false;
 		}}
-		onOpenSettings={() => (showSettingsModal = true)}
+		onOpenSettings={() => {
+			showSettingsView = true;
+			showBookmarks = false;
+			showArchivedView = false;
+		}}
 	/>
 	<div class="flex-1 flex flex-col overflow-hidden">
 	{#if !appState.hasChats && loadingChats.length === 0 && chatsNeedingReselect.length === 0}
+		{#if showSettingsView}
+			<SettingsSection
+				onBack={() => (showSettingsView = false)}
+				{isDarkMode}
+				onToggleDarkMode={toggleDarkMode}
+			/>
+		{:else}
 		<!-- Empty state - show file upload -->
 		<div class="relative flex-1 flex flex-col overflow-hidden">
 			<!-- Version badge (top-left) - fixed position -->
 			<div class="absolute top-4 left-4 z-10">
 				<VersionBadge />
 			</div>
-			
-			<!-- Settings buttons (top-right) - fixed position -->
+
+			<!-- Settings button (top-right) - fixed position -->
 			<div class="absolute top-4 right-4 flex items-center gap-1.5 z-10">
-				<LocaleSwitcher variant="default" />
 				<button
-					onclick={toggleDarkMode}
-					class="p-1.5 rounded-full transition-colors cursor-pointer bg-gray-100/80 dark:bg-gray-800/80 hover:bg-gray-200 dark:hover:bg-gray-700 backdrop-blur-sm"
-					aria-label={m.toggle_dark_mode()}
-					title={isDarkMode ? m.theme_switch_to_light() : m.theme_switch_to_dark()}
-				>
-					{#if isDarkMode}
-						<!-- Sun icon -->
-						<Icon name="sun" size="sm" class="text-yellow-500" />
-					{:else}
-						<!-- Moon icon -->
-						<Icon name="moon" size="sm" class="text-gray-600 dark:text-gray-400" />
-					{/if}
-				</button>
-				<button
-					onclick={() => (showSettingsModal = true)}
+					onclick={() => (showSettingsView = true)}
 					class="p-1.5 rounded-full transition-colors cursor-pointer bg-gray-100/80 dark:bg-gray-800/80 hover:bg-gray-200 dark:hover:bg-gray-700 backdrop-blur-sm"
 					aria-label={m.settings_title()}
 					title={m.settings_title()}
@@ -1700,7 +1704,7 @@ async function handleForgotPin() {
 					<Icon name="settings" size="sm" class="text-gray-600 dark:text-gray-400" />
 				</button>
 			</div>
-			
+
 			<!-- Scrollable content area -->
 			<div class="flex-1 overflow-y-auto">
 				<div class="flex flex-col items-center p-4 sm:p-8 min-h-full">
@@ -1755,11 +1759,31 @@ async function handleForgotPin() {
 		</div>
 	</div>
 	</div>
+	{/if}
 	{:else}
 		<!-- Main app layout -->
 		<div class="flex-1 flex flex-col overflow-hidden">
 			<!-- Top header bar - always full width -->
-			{#if appState.selectedChat && !isSelectedChatLocked}
+			{#if showSettingsView}
+				<!-- Settings view - simplified header -->
+				<div class="h-16 px-4 flex items-center gap-3 bg-[var(--color-whatsapp-dark-green)] flex-shrink-0">
+					<IconButton
+						theme="dark"
+						size="md"
+						class="-ml-2"
+						onclick={toggleSidebar}
+						aria-label={m.sidebar_toggle()}
+						title={m.sidebar_toggle()}
+					>
+						{#if showSidebar}
+							<Icon name="chevron-left" size="md" />
+						{:else}
+							<Icon name="menu" size="md" />
+						{/if}
+					</IconButton>
+					<span class="text-white font-medium">{m.settings_title()}</span>
+				</div>
+			{:else if appState.selectedChat && !isSelectedChatLocked}
 				{#snippet perspectiveSelectorContent()}
 					<DropdownHeader title={m.perspective_view_as()} />
 					
@@ -2021,25 +2045,15 @@ async function handleForgotPin() {
 							{/if}
 						</div>
 
-						<!-- Theme toggle, language selector, and settings (always visible) -->
-						<LocaleSwitcher variant="header" />
-						<IconButton
-							theme="dark"
-							size="md" rounded="full"
-							onclick={toggleDarkMode}
-							aria-label={m.toggle_dark_mode()}
-							title={isDarkMode ? m.theme_switch_to_light() : m.theme_switch_to_dark()}
-						>
-							{#if isDarkMode}
-								<Icon name="sun" size="md" class="text-yellow-300" />
-							{:else}
-								<Icon name="moon" size="md" class="text-white/80" />
-							{/if}
-						</IconButton>
+						<!-- Settings (always visible - appearance/language now live inside it) -->
 						<IconButton
 							theme="dark"
 							size="md"
-							onclick={() => (showSettingsModal = true)}
+							onclick={() => {
+								showSettingsView = true;
+								showBookmarks = false;
+								showArchivedView = false;
+							}}
 							aria-label={m.settings_title()}
 							title={m.settings_title()}
 						>
@@ -2096,7 +2110,11 @@ async function handleForgotPin() {
 					<IconButton
 						theme="dark"
 						size="md"
-						onclick={() => (showSettingsModal = true)}
+						onclick={() => {
+							showSettingsView = true;
+							showBookmarks = false;
+							showArchivedView = false;
+						}}
 						aria-label={m.settings_title()}
 						title={m.settings_title()}
 					>
@@ -2186,7 +2204,13 @@ async function handleForgotPin() {
 			{/if}
 
 			<!-- Main content -->
-			{#if appState.selectedChat && isSelectedChatLocked}
+			{#if showSettingsView}
+				<SettingsSection
+					onBack={() => (showSettingsView = false)}
+					{isDarkMode}
+					onToggleDarkMode={toggleDarkMode}
+				/>
+			{:else if appState.selectedChat && isSelectedChatLocked}
 				<LockedChatPane
 					onUnlock={() => handleRequestUnlock(appState.selectedChat?.title ?? '')}
 				/>
@@ -2454,11 +2478,6 @@ onSuccess={handleLockPinSuccess}
 onForgotPin={lockPinRequest.mode === 'unlock' ? handleForgotPin : undefined}
 onClose={closeLockPinModal}
 />
-{/if}
-
-<!-- Settings Modal -->
-{#if showSettingsModal}
-<SettingsModal onClose={() => (showSettingsModal = false)} />
 {/if}
 
 <!-- Toast Notification -->
