@@ -16,7 +16,7 @@ diambil biar gak diulang tanya. Remote "origin" = upstream (read-only),
 remote "mine" = papaonta/whatsapp-backup-reader (push target).
 ```
 
-## Current status (as of commit `7aa03fa`, 2026-08-15, not yet pushed)
+## Current status (as of commit `d9996f4`, 2026-08-15, not yet pushed)
 
 Working through a 6-phase WhatsApp-Desktop-style redesign, brainstormed
 and broken down across several sessions. **Fase 1-5 are shipped. Fase 6
@@ -133,10 +133,23 @@ broken - it may just be another concurrent session's work, already safe.
   mutual-exclusion toggle logic (`toggleChatInfo` follows the same
   pattern). Deliberately doesn't touch `ChatStats.svelte` - histogram/
   analytics stay separate, Info is identity/metadata only.
-- **Not started — Fase 6b:** "All Media" - currently an inert rail
-  placeholder since Fase 2. Needs real cross-chat aggregation;
-  `gallery.svelte.ts`/`MediaGallery.svelte` are currently 100%
-  single-chat scoped (`appState.selectedChat` only).
+- **Fase 6b — All Media (done):** the rail button is real now.
+  `gallery.svelte.ts` gained `viewMode: 'chat' | 'all'` - `'all'` flat-maps
+  every loaded chat's `mediaFiles` instead of just the selected chat's;
+  everything else (date grouping, filters, selection, lightbox,
+  `MediaThumbnail`) needed zero changes, already generic over
+  `GalleryItem[]`. Found and fixed a real bug along the way:
+  `GalleryItem.id` was just `media.path`, safe per-chat but not once
+  chats are merged (WhatsApp's auto-generated media filenames can
+  collide across separate exports) - selection/lightbox/video-frame-cache
+  now key off `` `${chatTitle}::${path}` ``, not raw `path`. Cross-chat
+  "go to message" reuses the exact switch-chat-then-scroll logic already
+  proven for bookmarks (`handleNavigateToBookmark`) via a new shared
+  `navigateToMessageInChat` helper - the media version previously had no
+  chat lookup at all, single-chat only. `gallery-panel`'s mount moved out
+  of the `selectedChat`-gated branch (same fix Starred needed in Fase 2).
+  All 5 rail destinations now fully reset each other (a gap where the
+  rail never coordinated with `showMediaGallery`/`showChatInfo` before).
 - **Not started — Fase 6c:** global "View as" - a default identity set
   once in Settings, auto-applied across chats, with per-chat override
   (sender names differ per export, so 100% auto-match isn't possible -
