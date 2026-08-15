@@ -16,7 +16,7 @@ diambil biar gak diulang tanya. Remote "origin" = upstream (read-only),
 remote "mine" = papaonta/whatsapp-backup-reader (push target).
 ```
 
-## Current status (as of commit `d9996f4`, 2026-08-15, not yet pushed)
+## Current status (as of commit `650b3a9`, 2026-08-15, not yet pushed)
 
 Working through a 6-phase WhatsApp-Desktop-style redesign, brainstormed
 and broken down across several sessions. **Fase 1-5 are shipped. Fase 6
@@ -150,11 +150,23 @@ broken - it may just be another concurrent session's work, already safe.
   of the `selectedChat`-gated branch (same fix Starred needed in Fase 2).
   All 5 rail destinations now fully reset each other (a gap where the
   rail never coordinated with `showMediaGallery`/`showChatInfo` before).
-- **Not started — Fase 6c:** global "View as" - a default identity set
-  once in Settings, auto-applied across chats, with per-chat override
-  (sender names differ per export, so 100% auto-match isn't possible -
-  see the original brainstorm notes for why this is flagged riskier than
-  the others).
+- **Fase 6c — Global "View as" default identity (done):** new
+  `DefaultIdentitySettings { enabled, identity }` (`persistence.svelte.ts`,
+  mirrors `AppLockSettings`' exact storage shape) + a reactive
+  `defaultIdentityState` singleton (`default-identity.svelte.ts`, mirrors
+  `app-lock.svelte.ts`). Auto-matches the saved identity against
+  `chat.participants` on fresh import/merge only (`applyDefaultIdentityIfNeeded`,
+  gated on `!perspectiveByChat.has(title)`) - deliberately conservative
+  matching (exact case-insensitive string, or a bounded last-9-digits
+  comparison for phone-shaped identities), never on restore (every
+  persisted chat's `settings.perspective` is always defined, even `null`,
+  so the schema can't tell "explicitly none" from "never decided" for an
+  already-seen chat - restore is left untouched on purpose, not
+  retrofitted). `chat.contacts` (VCF) was considered and rejected as a
+  matching signal - confirmed opportunistic, not a reliable directory.
+  Once auto-matched, a chat's perspective persists and is overridable
+  exactly like a manual pick always was - no new dropdown UI needed.
+  New Settings section between App Lock/PIN and Storage.
 - **Not started — Fase 6d:** search across all chats' message content -
   the biggest sub-project, needs a merged/cross-chat search index
   (current search-worker is per-chat only).
