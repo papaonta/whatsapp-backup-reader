@@ -16,10 +16,18 @@ diambil biar gak diulang tanya. Remote "origin" = upstream (read-only),
 remote "mine" = papaonta/whatsapp-backup-reader (push target).
 ```
 
-## Current status (as of commit `893ef1e`, 2026-08-15, not yet pushed)
+## Current status (as of commit `7aa03fa`, 2026-08-15, not yet pushed)
 
 Working through a 6-phase WhatsApp-Desktop-style redesign, brainstormed
-and broken down across several sessions. **Fase 1-5 are shipped.**
+and broken down across several sessions. **Fase 1-5 are shipped. Fase 6
+is split into 4 independent sub-projects (user's explicit choice, asked
+via AskUserQuestion) - 6a (info panel) done, 6b/6c/6d not started.** The
+user has said they'll do their own full manual test pass once everything
+is done, and wants a UAT document covering all fases at that point - the
+per-phase "here's a dmg + test scenario" ritual used through Fase 5 is
+relaxed for the rest of Fase 6: keep self-verifying (Playwright + real
+browser/Electron as before) and committing after each verified step
+without waiting for a go-ahead each time.
 
 **Heads up for whoever picks this up:** two Claude Code sessions worked on
 this repo concurrently at one point mid-redesign (Fase 3 landed from a
@@ -114,12 +122,29 @@ broken - it may just be another concurrent session's work, already safe.
   second search input there, but the same `chatSearchQuery` still applies
   to whatever list it's filtering). Deliberately does **not** search
   message content across chats - that's Fase 6.
-- **Not started yet — Fase 6 (bigger, standalone, optional/later):** "View
-  as" as a global profile concept, search across all chats' message
-  content, a per-chat info panel. Also where "All Media" (currently an
-  inert rail placeholder since Fase 2) should get its real cross-chat
-  aggregation implementation - `gallery.svelte.ts`/`MediaGallery.svelte`
-  are currently 100% single-chat scoped (`appState.selectedChat` only).
+- **Fase 6a — Chat info panel (done):** new `InfoPanel.svelte`, an
+  always-mounted slide-in panel (`.info-panel` CSS class, mirrors
+  `.bookmarks-panel`) - not a worker-backed overlay like `ChatStats`,
+  everything it shows is already on `ChatData`. Subsumes the old
+  Participants modal (avatar/name/phone-or-VCF/per-participant message
+  count, all reused as-is) rather than duplicating it - the modal is
+  gone, both the subtitle-click and a new header `info` icon open the
+  same panel now. Participates in the existing Bookmarks/MediaGallery
+  mutual-exclusion toggle logic (`toggleChatInfo` follows the same
+  pattern). Deliberately doesn't touch `ChatStats.svelte` - histogram/
+  analytics stay separate, Info is identity/metadata only.
+- **Not started — Fase 6b:** "All Media" - currently an inert rail
+  placeholder since Fase 2. Needs real cross-chat aggregation;
+  `gallery.svelte.ts`/`MediaGallery.svelte` are currently 100%
+  single-chat scoped (`appState.selectedChat` only).
+- **Not started — Fase 6c:** global "View as" - a default identity set
+  once in Settings, auto-applied across chats, with per-chat override
+  (sender names differ per export, so 100% auto-match isn't possible -
+  see the original brainstorm notes for why this is flagged riskier than
+  the others).
+- **Not started — Fase 6d:** search across all chats' message content -
+  the biggest sub-project, needs a merged/cross-chat search index
+  (current search-worker is per-chat only).
 
 ### Separately-tracked, not part of the 6-phase redesign
 
