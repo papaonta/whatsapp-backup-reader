@@ -23,8 +23,8 @@ import Icon from './Icon.svelte';
 interface Props {
 	item: GalleryItem;
 	selected: boolean;
-	onToggleSelected: (path: string) => void;
-	onOpen: (path: string) => void;
+	onToggleSelected: (id: string) => void;
+	onOpen: (id: string) => void;
 }
 
 let { item, selected, onToggleSelected, onOpen }: Props = $props();
@@ -108,7 +108,7 @@ async function loadVideoFrames(): Promise<void> {
 	try {
 		// Load the media blob if not already loaded
 		const blob = item.media.blob || (await loadMediaBlob());
-		videoFrameCache = await extractVideoFrames(blob, item.path, 10);
+		videoFrameCache = await extractVideoFrames(blob, item.id, 10);
 	} catch (err) {
 		console.error('Failed to extract video frames:', err);
 	} finally {
@@ -173,7 +173,7 @@ function handleVideoKeyDown(event: KeyboardEvent): void {
 		);
 	} else if (event.key === 'Enter' || event.key === ' ') {
 		event.preventDefault();
-		onOpen(item.path);
+		onOpen(item.id);
 	}
 }
 
@@ -210,7 +210,7 @@ onDestroy(() => {
 	}
 	// Cleanup video frame cache to prevent memory leaks
 	if (item.type === 'video' && videoFrameCache) {
-		clearFrameCache(item.path);
+		clearFrameCache(item.id);
 	}
 	// Release video thumbnail data URL to help garbage collection
 	if (item.type === 'video' && videoThumbnailUrl) {
@@ -227,7 +227,7 @@ onDestroy(() => {
 		type="button"
 		bind:this={videoPreviewEl}
 		class={`relative block w-full aspect-square bg-gray-50 dark:bg-gray-900/40 cursor-pointer${item.type === 'video' ? ' hover:cursor-ew-resize' : ''}`}
-		onclick={() => onOpen(item.path)}
+		onclick={() => onOpen(item.id)}
 		onmouseenter={handleVideoMouseEnter}
 		onmouseleave={handleVideoMouseLeave}
 		onmousemove={handleVideoMouseMove}
@@ -368,7 +368,7 @@ onDestroy(() => {
 		type="button"
 		class="absolute top-2 right-2 w-7 h-7 rounded-full border border-gray-200 dark:border-gray-700 bg-white/90 dark:bg-gray-800/90 backdrop-blur flex items-center justify-center shadow-sm opacity-0 group-hover:opacity-100 transition-opacity"
 		class:opacity-100={selected}
-		onclick={() => onToggleSelected(item.path)}
+		onclick={() => onToggleSelected(item.id)}
 		aria-pressed={selected}
 	>
 		{#if selected}

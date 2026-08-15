@@ -11,7 +11,7 @@ import type { MediaFile } from './parser/zip-parser';
 import { appState } from './state.svelte';
 
 export interface GalleryItem {
-	id: string; // stable ID (uses media.path)
+	id: string; // stable ID (chatTitle + media.path - see toGalleryItem)
 	media: MediaFile;
 	name: string;
 	path: string;
@@ -20,14 +20,28 @@ export interface GalleryItem {
 	messageId?: string;
 	messageTimestamp?: string;
 	messageSender?: string;
+	// Which chat this item belongs to - always the current chat in 'chat'
+	// mode, essential for provenance/navigation in 'all' mode. Chats have
+	// no separate id; title is already the established lookup key (see
+	// +page.svelte's handleNavigateToBookmark).
+	chatTitle: string;
 }
 
 /** Date key in YYYY-MM-DD format */
 export type DateKey = string;
 
-function toGalleryItem(media: MediaFile): GalleryItem {
+/** Sentinel sync key for "All Media" mode - see syncToChatTitle. */
+export const ALL_MEDIA_SYNC_KEY = '__ALL_MEDIA__';
+
+function toGalleryItem(media: MediaFile, chatTitle: string): GalleryItem {
 	return {
-		id: media.path,
+		// media.path alone isn't guaranteed unique once items from multiple
+		// chats are merged in 'all' mode (WhatsApp's auto-generated media
+		// filenames can collide across separate chat exports) - chatTitle
+		// disambiguates. Selection/lightbox key off `id`, not `path` (see
+		// selectedMediaIds/lightboxMediaId below); `path`/`media` stay the
+		// original values needed for byte-fetching.
+		id: `${chatTitle}::${media.path}`,
 		media,
 		name: media.name,
 		path: media.path,
@@ -36,6 +50,7 @@ function toGalleryItem(media: MediaFile): GalleryItem {
 		messageId: media.messageId,
 		messageTimestamp: media.messageTimestamp,
 		messageSender: media.messageSender,
+		chatTitle,
 	};
 }
 
@@ -71,8 +86,8 @@ export type MediaTypeFilter =
 	| 'other';
 
 function createGalleryState() {
-	let selectedMediaPaths = $state<Set<string>>(new Set());
-	let lightboxMediaPath = $state<string | null>(null);
+	let selectedMediaIds = $state<Set<string>>(new Set());
+	let lightboxMediaId = $state<string | null>(null);
 	let lastChatTitle = $state<string | null>(null);
 	let scrollToDateKey = $state<DateKey | null>(null);
 
@@ -84,11 +99,18 @@ function createGalleryState() {
 	const filterParticipants = $derived(Array.from(filterParticipantsSet));
 	const filterTypes = $derived(Array.from(filterTypesSet));
 
+	let viewMode = $state<'chat' | 'all'>('chat');
+
 	/** All items (unfiltered) */
 	const allItems = $derived.by(() => {
+		if (viewMode === 'all') {
+			return appState.chats.flatMap((chat) =>
+				chat.mediaFiles.map((media) => toGalleryItem(media, chat.title)),
+			);
+		}
 		const chat = appState.selectedChat;
 		if (!chat) return [] as GalleryItem[];
-		return chat.mediaFiles.map(toGalleryItem);
+		return chat.mediaFiles.map((media) => toGalleryItem(media, chat.title));
 	});
 
 	/** Unique participants who sent media */
@@ -177,19 +199,21 @@ function createGalleryState() {
 		};
 	});
 
-	const selectedCount = $derived(selectedMediaPaths.size);
+	const selectedCount = $derived(selectedMediaIds.size);
 
 	const selectedItems = $derived.by(() => {
-		if (selectedMediaPaths.size === 0) return [] as GalleryItem[];
-		const selected = selectedMediaPaths;
-		return items.filter((it) => selected.has(it.path));
+		if (selectedMediaIds.size === 0) return [] as GalleryItem[];
+		const selected = selectedMediaIds;
+		return items.filter((it) => selected.has(it.id));
 	});
 
-	function syncToChatTitle(currentTitle: string | null): void {
-		if (currentTitle === lastChatTitle) return;
-		selectedMediaPaths = new Set();
-		lightboxMediaPath = null;
-		lastChatTitle = currentTitle;
+	// currentKey is a real chat title in 'chat' mode, or ALL_MEDIA_SYNC_KEY
+	// when entering/leaving 'all' mode - same reset mechanism either way.
+	function syncToChatTitle(currentKey: string | null): void {
+		if (currentKey === lastChatTitle) return;
+		selectedMediaIds = new Set();
+		lightboxMediaId = null;
+		lastChatTitle = currentKey;
 		// Reset filters when changing chats
 		filterParticipantsSet = new Set();
 		filterTypesSet = new Set();
@@ -218,40 +242,44 @@ function createGalleryState() {
 		filterTypesSet = new Set();
 	}
 
-	function isSelected(path: string): boolean {
-		return selectedMediaPaths.has(path);
+	function isSelected(id: string): boolean {
+		return selectedMediaIds.has(id);
 	}
 
 	function clearSelection(): void {
-		if (selectedMediaPaths.size === 0) return;
-		selectedMediaPaths = new Set();
+		if (selectedMediaIds.size === 0) return;
+		selectedMediaIds = new Set();
 	}
 
-	function toggleSelected(path: string): void {
-		const next = new Set(selectedMediaPaths);
-		if (next.has(path)) {
-			next.delete(path);
+	function toggleSelected(id: string): void {
+		const next = new Set(selectedMediaIds);
+		if (next.has(id)) {
+			next.delete(id);
 		} else {
-			next.add(path);
+			next.add(id);
 		}
-		selectedMediaPaths = next;
+		selectedMediaIds = next;
 	}
 
-	function selectOnly(path: string): void {
-		selectedMediaPaths = new Set([path]);
+	function selectOnly(id: string): void {
+		selectedMediaIds = new Set([id]);
 	}
 
-	function selectMany(paths: string[]): void {
-		if (paths.length === 0) return;
-		const next = new Set(selectedMediaPaths);
-		for (const path of paths) {
-			next.add(path);
+	function selectMany(ids: string[]): void {
+		if (ids.length === 0) return;
+		const next = new Set(selectedMediaIds);
+		for (const id of ids) {
+			next.add(id);
 		}
-		selectedMediaPaths = next;
+		selectedMediaIds = next;
 	}
 
-	function setLightbox(path: string | null): void {
-		lightboxMediaPath = path;
+	function setLightbox(id: string | null): void {
+		lightboxMediaId = id;
+	}
+
+	function setViewMode(mode: 'chat' | 'all'): void {
+		viewMode = mode;
 	}
 
 	function goToDate(dateKey: DateKey): void {
@@ -306,11 +334,14 @@ function createGalleryState() {
 		get selectedItems() {
 			return selectedItems;
 		},
-		get lightboxMediaPath() {
-			return lightboxMediaPath;
+		get lightboxMediaId() {
+			return lightboxMediaId;
 		},
 		get lastChatTitle() {
 			return lastChatTitle;
+		},
+		get viewMode() {
+			return viewMode;
 		},
 		get scrollToDateKey() {
 			return scrollToDateKey;
@@ -329,6 +360,7 @@ function createGalleryState() {
 		},
 
 		syncToChatTitle,
+		setViewMode,
 		isSelected,
 		clearSelection,
 		toggleSelected,

@@ -3,10 +3,11 @@ import * as m from '$lib/paraglide/messages';
 import Icon from './Icon.svelte';
 
 interface Props {
-	activeItem: 'chats' | 'starred' | 'archived' | 'settings';
+	activeItem: 'chats' | 'starred' | 'archived' | 'settings' | 'all-media';
 	onSelectChats: () => void;
 	onSelectStarred: () => void;
 	onSelectArchived: () => void;
+	onSelectAllMedia: () => void;
 	onOpenSettings: () => void;
 }
 
@@ -15,6 +16,7 @@ let {
 	onSelectChats,
 	onSelectStarred,
 	onSelectArchived,
+	onSelectAllMedia,
 	onOpenSettings,
 }: Props = $props();
 
@@ -22,8 +24,6 @@ const activeClasses =
 	'text-[var(--color-whatsapp-teal)] bg-[var(--color-whatsapp-teal)]/10';
 const inactiveClasses =
 	'text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700';
-const disabledClasses =
-	'text-gray-400 dark:text-gray-600 opacity-40 cursor-not-allowed';
 const baseClasses =
 	'w-11 h-11 flex items-center justify-center rounded-lg transition-colors cursor-pointer';
 </script>
@@ -63,10 +63,10 @@ const baseClasses =
 
 	<button
 		type="button"
-		class="{baseClasses} {disabledClasses}"
-		disabled
+		class="{baseClasses} {activeItem === 'all-media' ? activeClasses : inactiveClasses}"
+		onclick={onSelectAllMedia}
 		aria-label={m.rail_all_media()}
-		title={m.rail_coming_soon()}
+		title={m.rail_all_media()}
 	>
 		<Icon name="grid" size="lg" />
 	</button>

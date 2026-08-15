@@ -3,6 +3,7 @@ import JSZip from 'jszip';
 import { onDestroy, tick } from 'svelte';
 import { browser } from '$app/environment';
 import {
+	ALL_MEDIA_SYNC_KEY,
 	type DateKey,
 	galleryState,
 	type MediaTypeFilter,
@@ -24,13 +25,19 @@ import MediaThumbnail from './MediaThumbnail.svelte';
 
 interface Props {
 	onClose: () => void;
-	onNavigateToMessage: (messageId: string) => void;
+	onNavigateToMessage: (messageId: string, chatTitle: string) => void;
 }
 
 let { onClose, onNavigateToMessage }: Props = $props();
 
+const isAllMediaMode = $derived(galleryState.viewMode === 'all');
+
 $effect(() => {
-	galleryState.syncToChatTitle(appState.selectedChat?.title ?? null);
+	galleryState.syncToChatTitle(
+		isAllMediaMode
+			? ALL_MEDIA_SYNC_KEY
+			: (appState.selectedChat?.title ?? null),
+	);
 });
 
 const items = $derived.by(() => galleryState.items);
@@ -39,7 +46,7 @@ const itemsByDate = $derived.by(() => galleryState.itemsByDate);
 const datesWithMedia = $derived.by(() => galleryState.datesWithMedia);
 const dateBoundaries = $derived.by(() => galleryState.dateBoundaries);
 const selectedCount = $derived.by(() => galleryState.selectedCount);
-const lightboxPath = $derived.by(() => galleryState.lightboxMediaPath);
+const lightboxId = $derived.by(() => galleryState.lightboxMediaId);
 const scrollToDateKey = $derived.by(() => galleryState.scrollToDateKey);
 const hasActiveFilter = $derived.by(() => galleryState.hasActiveFilter);
 const filterParticipants = $derived.by(() => galleryState.filterParticipants);
@@ -47,9 +54,9 @@ const filterTypes = $derived.by(() => galleryState.filterTypes);
 const mediaParticipants = $derived.by(() => galleryState.mediaParticipants);
 
 const lightboxItem = $derived.by(() => {
-	const path = lightboxPath;
-	if (!path) return null;
-	return items.find((it) => it.path === path) ?? null;
+	const id = lightboxId;
+	if (!id) return null;
+	return items.find((it) => it.id === id) ?? null;
 });
 
 let lightboxUrl = $state<string | null>(null);
@@ -169,9 +176,11 @@ async function downloadSelected(): Promise<void> {
 		}
 
 		const outBlob = await zip.generateAsync({ type: 'blob' });
-		const chatTitle = sanitizeFilename(appState.selectedChat?.title ?? 'chat');
+		const scopeLabel = isAllMediaMode
+			? 'all'
+			: sanitizeFilename(appState.selectedChat?.title ?? 'chat');
 		const date = new Date().toISOString().split('T')[0];
-		triggerDownload(outBlob, `whats-reader-media-${chatTitle}-${date}.zip`);
+		triggerDownload(outBlob, `whats-reader-media-${scopeLabel}-${date}.zip`);
 	} catch (err) {
 		downloadError = err instanceof Error ? err.message : String(err);
 	} finally {
@@ -226,7 +235,7 @@ function handleKeydown(e: KeyboardEvent) {
 			showTypeFilter = false;
 		} else if (showDatePicker) {
 			showDatePicker = false;
-		} else if (lightboxPath) {
+		} else if (lightboxId) {
 			closeLightbox();
 		} else {
 			onClose();
@@ -518,9 +527,9 @@ onDestroy(() => {
 						{#each dateItems as item (item.id)}
 							<MediaThumbnail
 								{item}
-								selected={galleryState.isSelected(item.path)}
-								onToggleSelected={(path) => galleryState.toggleSelected(path)}
-								onOpen={(path) => galleryState.setLightbox(path)}
+								selected={galleryState.isSelected(item.id)}
+								onToggleSelected={(id) => galleryState.toggleSelected(id)}
+								onOpen={(id) => galleryState.setLightbox(id)}
 							/>
 						{/each}
 					</div>
@@ -817,9 +826,10 @@ onDestroy(() => {
 								class="h-9 w-9 inline-flex items-center justify-center rounded-lg text-[var(--color-whatsapp-teal)] hover:bg-[var(--color-whatsapp-teal)]/10 dark:hover:bg-[var(--color-whatsapp-teal)]/15 transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-whatsapp-teal)]/60"
 								onclick={() => {
 									const messageId = lightboxItem?.messageId;
+									const chatTitle = lightboxItem?.chatTitle;
 									closeLightbox();
-									if (messageId) {
-										onNavigateToMessage(messageId);
+									if (messageId && chatTitle) {
+										onNavigateToMessage(messageId, chatTitle);
 										// On mobile devices, close the gallery after navigating
 										// This ensures the message is visible and not hidden behind the gallery overlay
 										if (browser && isMobileViewport()) {

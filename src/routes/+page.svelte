@@ -58,6 +58,7 @@ import { browser } from '$app/environment';
 import favicon from '$lib/assets/favicon.png';
 import { getAutoUpdaterState, initAutoUpdater } from '$lib/auto-updater.svelte';
 import { bookmarksState } from '$lib/bookmarks.svelte';
+import { galleryState } from '$lib/gallery.svelte';
 import {
 	ChatList,
 	ChatStats,
@@ -800,25 +801,18 @@ function toggleBookmarks() {
 function toggleMediaGallery() {
 	showMediaGallery = !showMediaGallery;
 	if (showMediaGallery) {
+		galleryState.setViewMode('chat');
 		showBookmarks = false;
 		showChatInfo = false;
 	}
 }
 
-async function handleNavigateToMediaMessage(messageId: string) {
-	// Clear any previous scroll target
-	scrollToMessageId = null;
-
-	// Wait for Svelte to process the null value
-	await tick();
-
-	// Set the new scroll target
-	scrollToMessageId = messageId;
-}
-
-async function handleNavigateToBookmark(messageId: string, chatId: string) {
-	// Find and select the chat if different from current
-	const chatIndex = appState.chats.findIndex((c) => c.title === chatId);
+// Shared by bookmark and media navigation - switches to the target chat
+// first if it isn't already open, then scrolls to the message once
+// Svelte's had a chance to process the null-then-set scroll target (a
+// longer delay when switching chats, to let the new chat's messages load).
+async function navigateToMessageInChat(messageId: string, chatTitle: string) {
+	const chatIndex = appState.chats.findIndex((c) => c.title === chatTitle);
 	const needsChatSwitch =
 		chatIndex !== -1 && chatIndex !== appState.selectedChatIndex;
 
@@ -826,20 +820,23 @@ async function handleNavigateToBookmark(messageId: string, chatId: string) {
 		appState.selectChat(chatIndex);
 	}
 
-	// Clear any previous scroll target
 	scrollToMessageId = null;
-
-	// Wait for Svelte to process the null value
 	await tick();
 
-	// Use longer delay when switching chats to allow messages to load
 	const delay = needsChatSwitch ? 300 : 0;
 	if (delay > 0) {
 		await new Promise((resolve) => setTimeout(resolve, delay));
 	}
 
-	// Set the new scroll target
 	scrollToMessageId = messageId;
+}
+
+async function handleNavigateToMediaMessage(messageId: string, chatTitle: string) {
+	await navigateToMessageInChat(messageId, chatTitle);
+}
+
+async function handleNavigateToBookmark(messageId: string, chatId: string) {
+	await navigateToMessageInChat(messageId, chatId);
 }
 
 function selectPerspective(participant: string | null) {
@@ -1658,26 +1655,50 @@ async function handleForgotPin() {
 
 	<div class="flex-1 flex overflow-hidden">
 	<IconRail
-		activeItem={showSettingsView ? 'settings' : showArchivedView ? 'archived' : showBookmarks ? 'starred' : 'chats'}
+		activeItem={showSettingsView
+			? 'settings'
+			: showArchivedView
+				? 'archived'
+				: showMediaGallery && galleryState.viewMode === 'all'
+					? 'all-media'
+					: showBookmarks
+						? 'starred'
+						: 'chats'}
 		onSelectChats={() => {
 			showBookmarks = false;
 			showArchivedView = false;
 			showSettingsView = false;
+			showMediaGallery = false;
+			showChatInfo = false;
 		}}
 		onSelectStarred={() => {
 			showBookmarks = true;
 			showArchivedView = false;
 			showSettingsView = false;
+			showMediaGallery = false;
+			showChatInfo = false;
 		}}
 		onSelectArchived={() => {
 			showArchivedView = true;
 			showBookmarks = false;
 			showSettingsView = false;
+			showMediaGallery = false;
+			showChatInfo = false;
+		}}
+		onSelectAllMedia={() => {
+			galleryState.setViewMode('all');
+			showMediaGallery = true;
+			showBookmarks = false;
+			showArchivedView = false;
+			showSettingsView = false;
+			showChatInfo = false;
 		}}
 		onOpenSettings={() => {
 			showSettingsView = true;
 			showBookmarks = false;
 			showArchivedView = false;
+			showMediaGallery = false;
+			showChatInfo = false;
 		}}
 	/>
 	<div class="flex-1 flex flex-col overflow-hidden">
@@ -2351,19 +2372,6 @@ async function handleForgotPin() {
 					/>
 				</div>
 
-				<!-- Media gallery panel (slide from right) -->
-				<div
-					class="gallery-panel w-96 flex-shrink-0 border-l border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 flex flex-col {showMediaGallery ? 'gallery-open' : 'gallery-closed'}"
-					class:electron-mac={isElectronMac}
-				>
-					<div class="flex-1 overflow-hidden">
-						<MediaGallery
-							onNavigateToMessage={handleNavigateToMediaMessage}
-							onClose={() => (showMediaGallery = false)}
-						/>
-					</div>
-				</div>
-
 				<!-- Stats modal -->
 				{#if showStats}
 					<ChatStats
@@ -2413,6 +2421,21 @@ async function handleForgotPin() {
 					</div>
 				</div>
 			{/if}
+
+			<!-- Media gallery panel (slide from right) - reachable regardless of
+			     whether a chat is selected, since "All Media" (rail-triggered)
+			     aggregates across every loaded chat the same way Starred does. -->
+			<div
+				class="gallery-panel w-96 flex-shrink-0 border-l border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 flex flex-col {showMediaGallery ? 'gallery-open' : 'gallery-closed'}"
+				class:electron-mac={isElectronMac}
+			>
+				<div class="flex-1 overflow-hidden">
+					<MediaGallery
+						onNavigateToMessage={handleNavigateToMediaMessage}
+						onClose={() => (showMediaGallery = false)}
+					/>
+				</div>
+			</div>
 
 			<!-- Bookmarks / Starred panel (slide from right) - reachable regardless
 			     of whether a chat is selected, since bookmarksState is a
