@@ -16,10 +16,10 @@ diambil biar gak diulang tanya. Remote "origin" = upstream (read-only),
 remote "mine" = papaonta/whatsapp-backup-reader (push target).
 ```
 
-## Current status (as of commit `1ad9cdc`, 2026-08-15, not yet pushed)
+## Current status (as of commit `893ef1e`, 2026-08-15, not yet pushed)
 
 Working through a 6-phase WhatsApp-Desktop-style redesign, brainstormed
-and broken down across several sessions. **Fase 1-4 are shipped.**
+and broken down across several sessions. **Fase 1-5 are shipped.**
 
 **Heads up for whoever picks this up:** two Claude Code sessions worked on
 this repo concurrently at one point mid-redesign (Fase 3 landed from a
@@ -97,8 +97,23 @@ broken - it may just be another concurrent session's work, already safe.
   real extraction, same test-harness workaround as Fase 3's persistence
   check - `<input type=file>` imports don't exercise the real extraction
   path in a test harness).
-- **Not started yet — Fase 5:** relocate the import button, add a search
-  bar to filter the chat list.
+- **Fase 5 — Import relocation + chat-list search filter (done):** the
+  sidebar's full-width "+Import Chat" button was replaced by a name-filter
+  input (`chatSearchQuery` in `+page.svelte`) in that same slot, with a
+  compact "+" `IconButton` beside it for the same `handleSidebarImport`
+  trigger - purely a relocation, the import pipeline itself is untouched.
+  Matches chat title OR any participant name (reuses the same
+  lowercase-includes pattern already used for the "View as" participant
+  search, `filteredParticipants`) - so group chats are findable by a
+  member's name. `ChatList.svelte`'s `sortedChatIndices` filter chain
+  gained a third condition (name match) alongside the existing archived
+  filter; a new "no chats match" empty state takes priority over the
+  generic "no chats at all" one when a filter is active and matches
+  nothing. The filter persists across the Chats/Archived rail switch
+  (Archived's own title bar - back button + label - is unchanged, no
+  second search input there, but the same `chatSearchQuery` still applies
+  to whatever list it's filtering). Deliberately does **not** search
+  message content across chats - that's Fase 6.
 - **Not started yet — Fase 6 (bigger, standalone, optional/later):** "View
   as" as a global profile concept, search across all chats' message
   content, a per-chat info panel. Also where "All Media" (currently an
