@@ -1,11 +1,13 @@
 <script lang="ts">
 import { appLockState } from '$lib/app-lock.svelte';
+import { defaultIdentityState } from '$lib/default-identity.svelte';
 import { formatFileSize } from '$lib/helpers/document-utils';
 import * as m from '$lib/paraglide/messages';
 import {
 	clearLockPin,
 	getLockPin,
 	setAppLockSettings,
+	setDefaultIdentitySettings,
 } from '$lib/persistence.svelte';
 import AppLockGate from './AppLockGate.svelte';
 import Button from './Button.svelte';
@@ -138,6 +140,22 @@ async function handleVerifySuccess() {
 function handleLockNow() {
 	appLockState.lockNow();
 }
+
+async function handleToggleDefaultIdentity() {
+	await setDefaultIdentitySettings({
+		...defaultIdentityState.settings,
+		enabled: !defaultIdentityState.settings.enabled,
+	});
+	await defaultIdentityState.refreshSettings();
+}
+
+async function handleDefaultIdentityChange(value: string) {
+	await setDefaultIdentitySettings({
+		...defaultIdentityState.settings,
+		identity: value,
+	});
+	await defaultIdentityState.refreshSettings();
+}
 </script>
 
 <div class="flex-1 overflow-y-auto bg-white dark:bg-gray-900">
@@ -256,6 +274,40 @@ function handleLockNow() {
 					</div>
 				</section>
 			{/if}
+
+			<section>
+				<h3 class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2">
+					{m.settings_default_identity_section()}
+				</h3>
+				<div class="flex items-center justify-between py-2">
+					<div>
+						<p class="text-sm font-medium text-gray-800 dark:text-gray-100">{m.settings_default_identity_enable()}</p>
+						<p class="text-xs text-gray-500 dark:text-gray-400">{m.settings_default_identity_enable_hint()}</p>
+					</div>
+					<button
+						type="button"
+						role="switch"
+						aria-checked={defaultIdentityState.settings.enabled}
+						aria-label={m.settings_default_identity_enable()}
+						onclick={handleToggleDefaultIdentity}
+						class="relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full transition-colors cursor-pointer {defaultIdentityState.settings.enabled ? 'bg-[var(--color-whatsapp-teal)]' : 'bg-gray-300 dark:bg-gray-600'}"
+					>
+						<span class="inline-block h-4 w-4 transform rounded-full bg-white transition-transform {defaultIdentityState.settings.enabled ? 'translate-x-6' : 'translate-x-1'}"></span>
+					</button>
+				</div>
+
+				{#if defaultIdentityState.settings.enabled}
+					<div class="py-2">
+						<input
+							type="text"
+							value={defaultIdentityState.settings.identity}
+							onchange={(e) => handleDefaultIdentityChange(e.currentTarget.value)}
+							placeholder={m.settings_default_identity_placeholder()}
+							class="w-full text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 px-3 py-2"
+						/>
+					</div>
+				{/if}
+			</section>
 
 			<section>
 				<h3 class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2">

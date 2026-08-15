@@ -74,6 +74,7 @@ const LOCK_PIN_KEY = 'whatsapp-lock-settings';
 const LOCK_WEBAUTHN_KEY = 'whatsapp-lock-webauthn-credential';
 const ONBOARDING_COMPLETED_KEY = 'whatsapp-onboarding-completed';
 const APP_LOCK_SETTINGS_KEY = 'whatsapp-app-lock-settings';
+const DEFAULT_IDENTITY_SETTINGS_KEY = 'whatsapp-default-identity-settings';
 
 // Number of message IDs to store for validation (helps with iOS exports that lack chat title)
 const VALIDATION_MESSAGE_ID_COUNT = 5;
@@ -773,6 +774,46 @@ export async function setAppLockSettings(
 		await set(APP_LOCK_SETTINGS_KEY, settings);
 	} catch (e) {
 		console.error('Failed to set app lock settings:', e);
+	}
+}
+
+/**
+ * Global "View as" default identity (Fase 6c) - a single name/phone
+ * number applied to every newly-imported chat's perspective (see
+ * +page.svelte's applyDefaultIdentityIfNeeded), not per-chat like
+ * PersistedChatMetadata.settings.perspective.
+ */
+export interface DefaultIdentitySettings {
+	enabled: boolean;
+	identity: string;
+}
+
+const DEFAULT_IDENTITY_SETTINGS: DefaultIdentitySettings = {
+	enabled: false,
+	identity: '',
+};
+
+export async function getDefaultIdentitySettings(): Promise<DefaultIdentitySettings> {
+	if (!browser) return DEFAULT_IDENTITY_SETTINGS;
+	try {
+		return (
+			(await get<DefaultIdentitySettings>(DEFAULT_IDENTITY_SETTINGS_KEY)) ||
+			DEFAULT_IDENTITY_SETTINGS
+		);
+	} catch (e) {
+		console.error('Failed to get default identity settings:', e);
+		return DEFAULT_IDENTITY_SETTINGS;
+	}
+}
+
+export async function setDefaultIdentitySettings(
+	settings: DefaultIdentitySettings,
+): Promise<void> {
+	if (!browser) return;
+	try {
+		await set(DEFAULT_IDENTITY_SETTINGS_KEY, settings);
+	} catch (e) {
+		console.error('Failed to set default identity settings:', e);
 	}
 }
 

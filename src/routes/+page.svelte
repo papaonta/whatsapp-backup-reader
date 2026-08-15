@@ -58,6 +58,7 @@ import { browser } from '$app/environment';
 import favicon from '$lib/assets/favicon.png';
 import { getAutoUpdaterState, initAutoUpdater } from '$lib/auto-updater.svelte';
 import { bookmarksState } from '$lib/bookmarks.svelte';
+import { defaultIdentityState } from '$lib/default-identity.svelte';
 import { galleryState } from '$lib/gallery.svelte';
 import {
 	ChatList,
@@ -648,6 +649,7 @@ async function handleFilesSelected(
 				}
 
 				appState.addChat(chatData);
+				applyDefaultIdentityIfNeeded(chatData);
 
 				// Store file reference for persistence
 				chatFileReferences.set(chatData.title, {
@@ -837,6 +839,47 @@ async function handleNavigateToMediaMessage(messageId: string, chatTitle: string
 
 async function handleNavigateToBookmark(messageId: string, chatId: string) {
 	await navigateToMessageInChat(messageId, chatId);
+}
+
+// Global "View as" default identity (Fase 6c) - conservative matching on
+// purpose: exact case-insensitive string match handles the common case
+// (same contact name saved consistently), plus a bounded phone-digit
+// suffix comparison for numbers surviving country-code/leading-0
+// formatting differences between exports. No fuzzy/typo matching - a
+// wrong auto-match (attributing someone else's messages to "you") is
+// worse than no match, and the per-chat dropdown is always there to
+// correct/override it.
+function matchesDefaultIdentity(participant: string, identity: string): boolean {
+	const a = participant.trim().toLowerCase();
+	const b = identity.trim().toLowerCase();
+	if (a === b) return true;
+
+	const aDigits = participant.replace(/\D/g, '');
+	const bDigits = identity.replace(/\D/g, '');
+	if (aDigits.length >= 8 && bDigits.length >= 8) {
+		const tailLen = Math.min(aDigits.length, bDigits.length, 9);
+		return aDigits.slice(-tailLen) === bDigits.slice(-tailLen);
+	}
+	return false;
+}
+
+// Called right after a chat is added via a fresh import or a merge (never
+// on restore - see cuddly-brewing-breeze.md's Fase 6c notes on why the
+// current persisted schema can't distinguish "explicitly no perspective"
+// from "never decided" for an already-seen chat, so restore is left
+// untouched to avoid ever overwriting a prior choice). Gating on
+// `!perspectiveByChat.has(...)` means this only ever fires the first time
+// a given chat title is ever added this way.
+function applyDefaultIdentityIfNeeded(chatData: ChatData) {
+	if (perspectiveByChat.has(chatData.title)) return;
+	const settings = defaultIdentityState.settings;
+	if (!settings.enabled || !settings.identity.trim()) return;
+	const match = chatData.participants.find((p) =>
+		matchesDefaultIdentity(p, settings.identity),
+	);
+	if (!match) return;
+	perspectiveByChat.set(chatData.title, match);
+	perspectiveByChat = new Map(perspectiveByChat);
 }
 
 function selectPerspective(participant: string | null) {
@@ -1046,6 +1089,7 @@ async function handleMergeChats(otherChats: ChatData[], mergedTitle: string) {
 	}
 
 	appState.addChat(chatData);
+	applyDefaultIdentityIfNeeded(chatData);
 	startIndexWorker(chatData);
 
 	// Persist the merged chat itself (Electron only - matches the
@@ -1103,6 +1147,7 @@ $effect(() => {
 
 	(async () => {
 		try {
+			await defaultIdentityState.init();
 			const persisted = await getPersistedChats();
 
 			// Prune extraction folders left behind by a crash/force-quit
