@@ -23,11 +23,21 @@ import Icon from './Icon.svelte';
 interface Props {
 	item: GalleryItem;
 	selected: boolean;
+	// Shows a small chat-name badge on the thumbnail - only meaningful in
+	// All Media mode, where items from many chats mix together and it's
+	// otherwise not obvious which chat a given item came from.
+	showChatBadge?: boolean;
 	onToggleSelected: (id: string) => void;
 	onOpen: (id: string) => void;
 }
 
-let { item, selected, onToggleSelected, onOpen }: Props = $props();
+let {
+	item,
+	selected,
+	showChatBadge = false,
+	onToggleSelected,
+	onOpen,
+}: Props = $props();
 
 let rootEl = $state<HTMLElement | null>(null);
 let thumbnailUrl = $state<string | null>(null);
@@ -363,6 +373,15 @@ onDestroy(() => {
 			</div>
 		{/if}
 	</button>
+
+	{#if showChatBadge}
+		<span
+			class="absolute top-2 left-2 max-w-[calc(100%-2.5rem)] truncate px-2 py-0.5 rounded-full text-[10px] font-medium text-white bg-black/50 backdrop-blur-sm pointer-events-none"
+			title={item.chatTitle}
+		>
+			{item.chatTitle}
+		</span>
+	{/if}
 
 	<button
 		type="button"

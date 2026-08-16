@@ -432,7 +432,7 @@ onDestroy(() => {
 			<div class="min-w-0 flex items-center gap-2">
 				<Icon name="image" size="md" class="flex-shrink-0 text-[var(--color-whatsapp-teal)]" />
 				<h2 class="min-w-0 text-sm font-semibold text-gray-900 dark:text-gray-100 truncate">
-					{m.media_gallery_title()}
+					{isAllMediaMode ? m.rail_all_media() : m.media_gallery_title()}
 				</h2>
 				{#if hasActiveFilter}
 					<span class="text-xs text-[var(--color-whatsapp-teal)] bg-[var(--color-whatsapp-teal)]/10 px-2 py-0.5 rounded-full whitespace-nowrap">
@@ -527,6 +527,7 @@ onDestroy(() => {
 						{#each dateItems as item (item.id)}
 							<MediaThumbnail
 								{item}
+								showChatBadge={isAllMediaMode}
 								selected={galleryState.isSelected(item.id)}
 								onToggleSelected={(id) => galleryState.toggleSelected(id)}
 								onOpen={(id) => galleryState.setLightbox(id)}

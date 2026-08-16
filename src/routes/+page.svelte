@@ -76,6 +76,7 @@ import {
 } from '$lib/components';
 import AutoUpdateToast from '$lib/components/AutoUpdateToast.svelte';
 import BookmarksPanel from '$lib/components/BookmarksPanel.svelte';
+import ConfirmBackupModal from '$lib/components/ConfirmBackupModal.svelte';
 import ConfirmDeleteChatModal from '$lib/components/ConfirmDeleteChatModal.svelte';
 import DuplicateImportModal from '$lib/components/DuplicateImportModal.svelte';
 import Icon from '$lib/components/Icon.svelte';
@@ -300,6 +301,26 @@ const isSelectedChatLocked = $derived(
 	!!appState.selectedChat &&
 		lockedByChat.get(appState.selectedChat.title) === true &&
 		!unlockedThisSession.has(appState.selectedChat.title),
+);
+// A selected chat that isn't part of the currently-filtered list (e.g. it
+// was open before switching to the Archived filter, and isn't archived)
+// shouldn't keep rendering - header and main content both key off this so
+// they stay in sync rather than the header showing a chat the main content
+// area has already stopped showing.
+const isSelectedChatVisible = $derived(
+	!!appState.selectedChat &&
+		(!showArchivedView || archivedChatTitles.has(appState.selectedChat.title)),
+);
+// "Global" views (Settings, Starred, All Media, cross-chat Search) aren't
+// scoped to any one chat, so they take over everything to the right of the
+// rail - rail stays, sidebar+header+chat area all disappear, unlike a
+// chat-scoped view (Chat Info, per-chat Media Gallery) which stays a side
+// panel next to the still-visible chat.
+const isInGlobalView = $derived(
+	showSettingsView ||
+		showBookmarks ||
+		showCrossChatSearch ||
+		(showMediaGallery && galleryState.viewMode === 'all'),
 );
 // True while viewing a locked chat that was unlocked (PIN/biometric) this
 // session — the state that shows the "Lock now" re-lock button.
@@ -1014,6 +1035,16 @@ function handleExportChat() {
 
 let isBackingUpChat = $state(false);
 let backupProgress = $state(0);
+let showBackupConfirm = $state(false);
+
+function requestBackupChatAsZip() {
+	showBackupConfirm = true;
+}
+
+function confirmBackupChatAsZip() {
+	showBackupConfirm = false;
+	handleBackupChatAsZip();
+}
 
 // Mirrors MediaGallery.svelte's makeUniqueFilename - small enough to
 // duplicate rather than share across an unrelated component boundary.
@@ -1888,8 +1919,10 @@ async function handleForgotPin() {
 				<VersionBadge />
 			</div>
 
-			<!-- Settings button (top-right) - fixed position -->
-			<div class="absolute top-4 right-4 flex items-center gap-1.5 z-10">
+			<!-- Settings button (top-right) - fixed position. Mobile only: the
+			     rail already covers this on desktop, and there's no chat-list
+			     sidebar yet in this zero-chats state to host a fallback. -->
+			<div class="absolute top-4 right-4 flex items-center gap-1.5 z-10 md:hidden">
 				<button
 					onclick={() => (showSettingsView = true)}
 					class="p-1.5 rounded-full transition-colors cursor-pointer bg-gray-100/80 dark:bg-gray-800/80 hover:bg-gray-200 dark:hover:bg-gray-700 backdrop-blur-sm"
@@ -1958,27 +1991,39 @@ async function handleForgotPin() {
 	{:else}
 		<!-- Main app layout -->
 		<div class="flex-1 flex flex-col overflow-hidden">
-			<!-- Top header bar - always full width -->
+		{#if isInGlobalView}
+			<!-- Global view: Settings/Starred/All Media/Search aren't scoped to
+			     one chat, so they take over everything right of the rail -
+			     sidebar+header+chat area don't render at all here. Each panel
+			     below already owns its own header/back affordance. -->
 			{#if showSettingsView}
-				<!-- Settings view - simplified header -->
-				<div class="h-16 px-4 flex items-center gap-3 bg-[var(--color-whatsapp-dark-green)] flex-shrink-0">
-					<IconButton
-						theme="dark"
-						size="md"
-						class="-ml-2"
-						onclick={toggleSidebar}
-						aria-label={m.sidebar_toggle()}
-						title={m.sidebar_toggle()}
-					>
-						{#if showSidebar}
-							<Icon name="chevron-left" size="md" />
-						{:else}
-							<Icon name="menu" size="md" />
-						{/if}
-					</IconButton>
-					<span class="text-white font-medium">{m.settings_title()}</span>
-				</div>
-			{:else if appState.selectedChat && !isSelectedChatLocked}
+				<SettingsSection
+					onBack={() => (showSettingsView = false)}
+					{isDarkMode}
+					onToggleDarkMode={toggleDarkMode}
+				/>
+			{:else if showBookmarks}
+				<BookmarksPanel
+					currentChatId={appState.selectedChat?.title}
+					onNavigateToMessage={handleNavigateToBookmark}
+					onClose={() => (showBookmarks = false)}
+					indexedChatTitles={appState.indexedChatTitles}
+				/>
+			{:else if showCrossChatSearch}
+				<SearchResultsPanel
+					initialQuery={crossChatSearchInitialQuery}
+					onNavigateToMessage={handleNavigateToMediaMessage}
+					onClose={closeCrossChatSearch}
+				/>
+			{:else if showMediaGallery && galleryState.viewMode === 'all'}
+				<MediaGallery
+					onNavigateToMessage={handleNavigateToMediaMessage}
+					onClose={() => (showMediaGallery = false)}
+				/>
+			{/if}
+		{:else}
+			<!-- Top header bar - always full width -->
+			{#if appState.selectedChat && isSelectedChatVisible && !isSelectedChatLocked}
 				{#snippet perspectiveSelectorContent()}
 					<DropdownHeader title={m.perspective_view_as()} />
 					
@@ -2017,11 +2062,12 @@ async function handleForgotPin() {
 				
 				<!-- Chat header -->
 				<div class="h-16 px-4 flex items-center gap-3 bg-[var(--color-whatsapp-dark-green)] text-white shadow-md flex-shrink-0">
-					<!-- Sidebar toggle button -->
+					<!-- Sidebar toggle button - mobile only, sidebar is always
+					     visible at desktop widths (see .sidebar-panel in app.css) -->
 					<IconButton
 						theme="dark"
 						size="md"
-						class="-ml-2"
+						class="-ml-2 md:hidden"
 						onclick={toggleSidebar}
 						aria-label={m.sidebar_toggle()}
 						title={m.sidebar_toggle()}
@@ -2143,10 +2189,10 @@ async function handleForgotPin() {
 										<ListItemButton
 											onclick={() => {
 												showChatOptionsDropdown = false;
-												handleBackupChatAsZip();
+												requestBackupChatAsZip();
 											}}
 										>
-											<Icon name="archive" size="sm" />
+											<Icon name="cloud-download" size="sm" />
 											<span>{m.chat_backup_zip()}</span>
 										</ListItemButton>
 										<ListItemButton
@@ -2252,13 +2298,13 @@ async function handleForgotPin() {
 								theme="dark"
 								size="md"
 								class="relative"
-								onclick={handleBackupChatAsZip}
+								onclick={requestBackupChatAsZip}
 								disabled={isBackingUpChat}
 								aria-busy={isBackingUpChat}
 								title={isBackingUpChat ? m.chat_backup_preparing({ progress: backupProgress }) : m.chat_backup_zip()}
 								aria-label={m.chat_backup_zip()}
 							>
-								<Icon name="archive" size="md" />
+								<Icon name="cloud-download" size="md" />
 								{#if isBackingUpChat}
 									<span class="absolute -top-1 -right-1 px-1.5 py-0.5 rounded-full bg-black/35 text-[10px] text-white/90 tabular-nums">
 										{backupProgress}%
@@ -2286,30 +2332,15 @@ async function handleForgotPin() {
 								</IconButton>
 							{/if}
 						</div>
-
-						<!-- Settings (always visible - appearance/language now live inside it) -->
-						<IconButton
-							theme="dark"
-							size="md"
-							onclick={() => {
-								showSettingsView = true;
-								showBookmarks = false;
-								showArchivedView = false;
-							}}
-							aria-label={m.settings_title()}
-							title={m.settings_title()}
-						>
-							<Icon name="settings" size="md" />
-						</IconButton>
 					</div>
 				</div>
-			{:else if appState.selectedChat}
+			{:else if appState.selectedChat && isSelectedChatVisible}
 				<!-- Chat is locked - compact header, no participants/options menu -->
 				<div class="h-16 px-4 flex items-center gap-3 bg-[var(--color-whatsapp-dark-green)] text-white shadow-md flex-shrink-0">
 					<IconButton
 						theme="dark"
 						size="md"
-						class="-ml-2"
+						class="-ml-2 md:hidden"
 						onclick={toggleSidebar}
 						aria-label={m.sidebar_toggle()}
 						title={m.sidebar_toggle()}
@@ -2334,11 +2365,12 @@ async function handleForgotPin() {
 			{:else}
 				<!-- No chat selected - simplified header -->
 				<div class="h-16 px-4 flex items-center justify-between bg-[var(--color-whatsapp-dark-green)] flex-shrink-0">
-					<!-- Sidebar toggle button -->
+					<!-- Sidebar toggle button - mobile only, sidebar is always
+					     visible at desktop widths -->
 					<IconButton
 						theme="dark"
 						size="md"
-						class="-ml-2"
+						class="-ml-2 md:hidden"
 						onclick={toggleSidebar}
 						aria-label={m.sidebar_toggle()}
 						title={m.sidebar_toggle()}
@@ -2348,19 +2380,6 @@ async function handleForgotPin() {
 						{:else}
 							<Icon name="menu" size="md" />
 						{/if}
-					</IconButton>
-					<IconButton
-						theme="dark"
-						size="md"
-						onclick={() => {
-							showSettingsView = true;
-							showBookmarks = false;
-							showArchivedView = false;
-						}}
-						aria-label={m.settings_title()}
-						title={m.settings_title()}
-					>
-						<Icon name="settings" size="md" />
 					</IconButton>
 				</div>
 			{/if}
@@ -2437,6 +2456,27 @@ async function handleForgotPin() {
 							>
 								<Icon name="archive" size="md" />
 							</IconButton>
+							<!-- Mobile only - rail already covers this on desktop.
+							     Lives here (chat-list level), not in a chat's own
+							     header, since Settings has nothing to do with
+							     whichever chat happens to be open. -->
+							<IconButton
+								theme="light"
+								size="lg"
+								class="md:hidden"
+								onclick={() => {
+									showSettingsView = true;
+									showBookmarks = false;
+									showArchivedView = false;
+									showMediaGallery = false;
+									showChatInfo = false;
+									closeCrossChatSearch();
+								}}
+								aria-label={m.rail_settings()}
+								title={m.rail_settings()}
+							>
+								<Icon name="settings" size="md" />
+							</IconButton>
 						</div>
 					{/if}
 					<input
@@ -2488,17 +2528,11 @@ async function handleForgotPin() {
 			{/if}
 
 			<!-- Main content -->
-			{#if showSettingsView}
-				<SettingsSection
-					onBack={() => (showSettingsView = false)}
-					{isDarkMode}
-					onToggleDarkMode={toggleDarkMode}
-				/>
-			{:else if appState.selectedChat && isSelectedChatLocked}
+			{#if appState.selectedChat && isSelectedChatVisible && isSelectedChatLocked}
 				<LockedChatPane
 					onUnlock={() => handleRequestUnlock(appState.selectedChat?.title ?? '')}
 				/>
-			{:else if appState.selectedChat}
+			{:else if appState.selectedChat && isSelectedChatVisible}
 				<div class="flex-1 flex flex-col overflow-hidden">
 					<!-- Search bar -->
 					<div class="p-3 bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
@@ -2637,58 +2671,24 @@ async function handleForgotPin() {
 				</div>
 			{/if}
 
-			<!-- Media gallery panel (slide from right) - reachable regardless of
-			     whether a chat is selected, since "All Media" (rail-triggered)
-			     aggregates across every loaded chat the same way Starred does. -->
-			<div
-				class="gallery-panel w-96 flex-shrink-0 border-l border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 flex flex-col {showMediaGallery ? 'gallery-open' : 'gallery-closed'}"
-				class:electron-mac={isElectronMac}
-			>
-				<div class="flex-1 overflow-hidden">
-					<MediaGallery
-						onNavigateToMessage={handleNavigateToMediaMessage}
-						onClose={() => (showMediaGallery = false)}
-					/>
-				</div>
-			</div>
-
-			<!-- Bookmarks / Starred panel (slide from right) - reachable regardless
-			     of whether a chat is selected, since bookmarksState is a
-			     cross-chat singleton and BookmarksPanel already supports an
-			     "all chats" view. -->
-			<div
-				class="bookmarks-panel w-80 flex-shrink-0 border-l border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 flex flex-col {showBookmarks ? 'bookmarks-open' : 'bookmarks-closed'}"
-				class:electron-mac={isElectronMac}
-			>
-				<div class="flex-1 overflow-hidden">
-					<BookmarksPanel
-						currentChatId={appState.selectedChat?.title}
-						onNavigateToMessage={handleNavigateToBookmark}
-						onClose={() => (showBookmarks = false)}
-						indexedChatTitles={appState.indexedChatTitles}
-					/>
-				</div>
-			</div>
-
-			<!-- Cross-chat message search panel (slide from right) - mounted
-			     conditionally (unlike its siblings above) since opening it spawns
-			     one search worker per loaded chat; no reason to pay that cost
-			     before the user actually asks for it. -->
-			<div
-				class="search-panel w-96 flex-shrink-0 border-l border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 flex flex-col {showCrossChatSearch ? 'search-open' : 'search-closed'}"
-				class:electron-mac={isElectronMac}
-			>
-				<div class="flex-1 overflow-hidden">
-					{#if showCrossChatSearch}
-						<SearchResultsPanel
-							initialQuery={crossChatSearchInitialQuery}
+			<!-- Media gallery panel (slide from right) - per-chat mode only.
+			     All-media mode is a global view, mounted full-bleed above
+			     instead (see isInGlobalView). -->
+			{#if galleryState.viewMode === 'chat'}
+				<div
+					class="gallery-panel w-96 flex-shrink-0 border-l border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 flex flex-col {showMediaGallery ? 'gallery-open' : 'gallery-closed'}"
+					class:electron-mac={isElectronMac}
+				>
+					<div class="flex-1 overflow-hidden">
+						<MediaGallery
 							onNavigateToMessage={handleNavigateToMediaMessage}
-							onClose={closeCrossChatSearch}
+							onClose={() => (showMediaGallery = false)}
 						/>
-					{/if}
+					</div>
 				</div>
-			</div>
+			{/if}
 		</div>
+		{/if}
 	</div>
 	{/if}
 	</div>
@@ -2705,6 +2705,15 @@ async function handleForgotPin() {
 chat={deleteChatTarget.chat}
 onConfirm={confirmDeleteChat}
 onCancel={cancelDeleteChat}
+/>
+{/if}
+
+<!-- Backup-ZIP confirmation -->
+{#if showBackupConfirm && appState.selectedChat}
+<ConfirmBackupModal
+chat={appState.selectedChat}
+onConfirm={confirmBackupChatAsZip}
+onCancel={() => (showBackupConfirm = false)}
 />
 {/if}
 

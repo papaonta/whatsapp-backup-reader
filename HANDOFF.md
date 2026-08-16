@@ -266,6 +266,52 @@ broken - it may just be another concurrent session's work, already safe.
   Archived view (back-chevron returns correctly), and confirmed no
   regression/overflow at desktop width (both rail and sidebar triggers
   present side by side).
+- **UX audit fixes (done):** the user's own hands-on click-through of the
+  finished redesign surfaced 7 real issues, all fixed in one pass -
+  established a clearer layout vocabulary along the way (**rail**,
+  **sidebar**, **header**, **main content**, **panel** - see the
+  architectural principle below).
+  - **Settings/Starred/All Media/Cross-chat Search are now "global"
+    views**, not side panels: they take over everything right of the
+    rail (sidebar + header + chat all disappear), rather than the old
+    behavior of narrowing a still-fully-visible chat. New
+    `isInGlobalView` derived in `+page.svelte` gates a top-level
+    `{#if isInGlobalView} <!-- one of the 4 panels, full-bleed -->
+    {:else} <!-- normal rail-sidebar-header-content layout --> {/if}`
+    split. Chat Info and per-chat Media Gallery stay side panels
+    on purpose - they're genuinely scoped to one chat, unlike these 4.
+    Deleted the now-dead `.bookmarks-panel`/`.search-panel` CSS
+    (fully migrated); `.gallery-panel` stays for per-chat mode only.
+  - **Sidebar never collapses at desktop width** anymore (real
+    WhatsApp Desktop doesn't have this control) - only mobile keeps
+    the slide-in-drawer + toggle-button behavior.
+  - **Removed the header's redundant Settings gear** entirely (3
+    instances) - it sat inline with a specific open chat's name/icons,
+    misleadingly implying "settings for this chat." Added one proper
+    mobile-only replacement in the sidebar's own title bar (next to
+    Archived), matching the Archived mobile-fix pattern exactly -
+    that's chat-list-level UI, not per-chat UI.
+  - **Archived-filter/stale-chat bug**: switching to the Archived
+    filter while a non-archived chat was open left both the header and
+    the chat room showing that stale chat. Fixed with a shared
+    `isSelectedChatVisible` derived (`selectedChat` exists AND is
+    archived-or-filter-is-off), used by both the header and
+    main-content conditionals so they can't drift out of sync again -
+    `appState.selectedChatIndex` itself is never touched, so switching
+    back to "All Chats" naturally restores the same chat.
+  - **Backup-ZIP icon confusion**: it reused the `archive` icon,
+    right next to the real "Archive chat" action elsewhere - the user
+    mistook one for the other. New `cloud-download` icon added to
+    `Icon.svelte` (mirrors `cloud-upload`, arrow reversed), plus a new
+    `ConfirmBackupModal.svelte` (mirrors `ConfirmDeleteChatModal`,
+    neutral tone) gating `handleBackupChatAsZip` behind a confirm step.
+  - **All Media polish**: header title now says "All Media" (reuses
+    `rail_all_media`) instead of generic "Media"; each thumbnail gets
+    a small chat-name badge (`MediaThumbnail`'s new `showChatBadge`
+    prop, reading the already-present `GalleryItem.chatTitle`) so
+    it's obvious which chat a given item came from.
+  - Verified live via Playwright at both desktop and mobile widths,
+    including the full archive-a-chat-while-another-is-open repro.
 
 ## Working conventions established across sessions (don't relitigate)
 
