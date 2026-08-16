@@ -312,6 +312,68 @@ broken - it may just be another concurrent session's work, already safe.
     it's obvious which chat a given item came from.
   - Verified live via Playwright at both desktop and mobile widths,
     including the full archive-a-chat-while-another-is-open repro.
+- **UX audit fixes, round 2 (done):** further hands-on feedback,
+  including two screenshots comparing directly against real WhatsApp
+  Desktop's layout.
+  - **Bookmarks now mirrors Media Gallery's dual mode exactly**: new
+    `bookmarksScope: 'all' | 'chat'` state in `+page.svelte` (set by
+    `toggleBookmarks()`/rail's `onSelectStarred`, same pattern as
+    `galleryState.viewMode`). `'chat'` mode is a restored `.bookmarks-panel`
+    side panel (CSS re-added to `app.css`, deleted in the round-1 pass
+    when Bookmarks was briefly *always* full-view); `'all'` mode is the
+    full global view, now omitting `currentChatId` so `BookmarksPanel`'s
+    own existing `{#if currentChatId}`-gated "All chats"/"This chat"
+    tab UI doesn't show when there's no real per-chat context (rail
+    entry).
+  - **Header moved from full-app-width to scoped inside the chat
+    column** - confirmed via side-by-side screenshot that real WhatsApp
+    Desktop never shows the chat header above the sidebar (sidebar has
+    its own separate title bar, unchanged). Restructured
+    `+page.svelte`'s non-global-view branch: `Content area` (flex row)
+    now holds `[Sidebar][new "chat column" flex-col: header + main
+    content]` instead of `[Header full-width][Content area: sidebar +
+    main content]`. Pure relocation, no logic changes to the header's 3
+    branches or the `perspectiveSelectorContent` snippet.
+  - **Real regression found and fixed during this move**: the Chat Info
+    `.info-panel` div lives inside "Main content"'s chat-room branch,
+    which is now nested inside the new flex-*column* "chat column"
+    wrapper - `.info-panel` (meant to sit beside the chat, narrowing it
+    horizontally, same as `.gallery-panel`/`.bookmarks-panel`) was
+    stacking *below* the chat instead, collapsing the message list to a
+    few px of visible height. Caught via `getBoundingClientRect()`
+    debugging (a screenshot alone just looked "blank" - not obviously a
+    layout bug at a glance). Fixed by relocating `.info-panel` out to
+    be a flex-row sibling of the chat column, alongside
+    gallery-panel/bookmarks-panel, exactly where it was structurally
+    before this round's header move.
+  - **`navigateToMessageInChat` fixed** (was the root cause of both
+    "Go to message" from All Media and "Go to" from Bookmarks silently
+    not navigating): it switched the selected chat but never closed
+    whichever global view triggered it, so the view - which fully owns
+    the screen while open - just kept rendering over the now-irrelevant
+    chat switch. Added the same full mutual-exclusion reset used
+    everywhere else in this file as the function's first lines.
+  - **System-message detection fixes** in `chat-parser.ts`: security-
+    code-changed used a fixed-string `.includes('security code
+    changed')` that broke once a contact name is inserted in the real
+    export text ("...security code **with X** changed.") - replaced
+    with a dedicated `SECURITY_CODE_CHANGE_REGEX`. New
+    `ChatMessage.isDeletedMessage` field + `DELETED_MESSAGE_INDICATORS`
+    (multi-locale, matching `SYSTEM_INDICATORS`'s existing English/
+    Portuguese/Spanish/French/German/Italian/Dutch coverage) - deleted-
+    message placeholders ("You deleted this message.", "This message
+    was deleted.") previously rendered as indistinguishable normal
+    bubbles. Per the user's explicit choice, deleted messages get a
+    *different* treatment than system messages: they stay in their
+    normal bubble position (sender/alignment/grouping unchanged), just
+    italic + muted (`MessageBubble.svelte`), matching real WhatsApp's
+    per-message (not group-wide-event) styling.
+  - Verified via a small synthetic fixture zip (colon-prefixed security-
+    code line + both deleted-message variants) plus DOM/layout
+    inspection (`getBoundingClientRect()` walking the ancestor chain),
+    not just screenshots - the info-panel regression above would have
+    been easy to miss from a screenshot alone since the page doesn't
+    show an error, just an empty-looking chat pane.
 
 ## Working conventions established across sessions (don't relitigate)
 

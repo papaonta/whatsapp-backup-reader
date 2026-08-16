@@ -185,6 +185,10 @@ let showStats = $state(false);
 let showSidebar = $state(true);
 let sidebarFileInput: HTMLInputElement | undefined = $state();
 let showBookmarks = $state(false);
+// Mirrors galleryState.viewMode: 'chat' opened from a chat's own header
+// icon (side panel, this chat's bookmarks), 'all' opened from the rail
+// (full view, all chats, no per-chat tab UI).
+let bookmarksScope = $state<'all' | 'chat'>('all');
 let showArchivedView = $state(false);
 let chatSearchQuery = $state('');
 let showMediaGallery = $state(false);
@@ -318,7 +322,7 @@ const isSelectedChatVisible = $derived(
 // panel next to the still-visible chat.
 const isInGlobalView = $derived(
 	showSettingsView ||
-		showBookmarks ||
+		(showBookmarks && bookmarksScope === 'all') ||
 		showCrossChatSearch ||
 		(showMediaGallery && galleryState.viewMode === 'all'),
 );
@@ -858,6 +862,7 @@ function toggleSidebar() {
 function toggleBookmarks() {
 	showBookmarks = !showBookmarks;
 	if (showBookmarks) {
+		bookmarksScope = 'chat';
 		showMediaGallery = false;
 		showChatInfo = false;
 		closeCrossChatSearch();
@@ -879,6 +884,14 @@ function toggleMediaGallery() {
 // Svelte's had a chance to process the null-then-set scroll target (a
 // longer delay when switching chats, to let the new chat's messages load).
 async function navigateToMessageInChat(messageId: string, chatTitle: string) {
+	// Whichever global view triggered this (All Media, Bookmarks) has to
+	// close - it fully owns the screen while open, so just switching the
+	// selected chat underneath it would otherwise be invisible.
+	showSettingsView = false;
+	showBookmarks = false;
+	closeCrossChatSearch();
+	showMediaGallery = false;
+
 	const chatIndex = appState.chats.findIndex((c) => c.title === chatTitle);
 	const needsChatSwitch =
 		chatIndex !== -1 && chatIndex !== appState.selectedChatIndex;
@@ -1870,6 +1883,7 @@ async function handleForgotPin() {
 			closeCrossChatSearch();
 		}}
 		onSelectStarred={() => {
+			bookmarksScope = 'all';
 			showBookmarks = true;
 			showArchivedView = false;
 			showSettingsView = false;
@@ -2003,8 +2017,9 @@ async function handleForgotPin() {
 					onToggleDarkMode={toggleDarkMode}
 				/>
 			{:else if showBookmarks}
+				<!-- bookmarksScope === 'all' only - 'chat' mode stays a side
+				     panel next to the chat (see the per-chat mount below). -->
 				<BookmarksPanel
-					currentChatId={appState.selectedChat?.title}
 					onNavigateToMessage={handleNavigateToBookmark}
 					onClose={() => (showBookmarks = false)}
 					indexedChatTitles={appState.indexedChatTitles}
@@ -2022,17 +2037,164 @@ async function handleForgotPin() {
 				/>
 			{/if}
 		{:else}
-			<!-- Top header bar - always full width -->
+			<!-- Content area: sidebar (own title bar) + chat column (own header) -->
+			<div class="flex-1 flex overflow-hidden">
+				<!-- Sidebar -->
+				<div
+					class="sidebar-panel w-80 flex-shrink-0 border-r border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 flex flex-col {showSidebar ? 'sidebar-open' : 'sidebar-closed'}"
+					class:electron-mac={isElectronMac}
+				>
+				
+				<!-- Chats title bar - matches search bar styling exactly -->
+				<div class="p-3 bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
+					{#if showArchivedView}
+						<div class="flex items-center gap-2 h-10">
+							<IconButton
+								theme="subtle"
+								size="sm"
+								onclick={() => (showArchivedView = false)}
+								aria-label={m.archived_chats_back()}
+								title={m.archived_chats_back()}
+							>
+								<Icon name="chevron-left" size="md" />
+							</IconButton>
+							<span class="font-medium text-gray-800 dark:text-white">{m.archived_chats_title()}</span>
+						</div>
+					{:else}
+						<div class="flex items-center gap-2">
+							<div class="relative flex-1">
+								<div class="absolute inset-y-0 left-3 flex items-center pointer-events-none">
+									<Icon name="search" size="sm" class="text-gray-400" />
+								</div>
+								<input
+									type="text"
+									bind:value={chatSearchQuery}
+									placeholder={m.chats_search_placeholder()}
+									class="w-full h-10 pl-10 pr-9 bg-gray-100 dark:bg-gray-800 rounded-lg text-sm text-gray-800 dark:text-gray-100 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[var(--color-whatsapp-teal)]"
+								/>
+								{#if chatSearchQuery}
+									<button
+										type="button"
+										class="absolute inset-y-0 right-2 flex items-center cursor-pointer text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+										onclick={() => (chatSearchQuery = '')}
+										aria-label={m.search_clear()}
+										title={m.search_clear()}
+									>
+										<Icon name="close" size="sm" />
+									</button>
+								{/if}
+							</div>
+							<IconButton
+								theme="light"
+								size="lg"
+								onclick={handleSidebarImport}
+								aria-label={m.import_chat()}
+								title={m.import_chat()}
+							>
+								<Icon name="plus" size="md" />
+							</IconButton>
+							<IconButton
+								theme="light"
+								size="lg"
+								onclick={() => {
+									showArchivedView = true;
+									showBookmarks = false;
+									showSettingsView = false;
+									showMediaGallery = false;
+									showChatInfo = false;
+									closeCrossChatSearch();
+								}}
+								aria-label={m.rail_archived()}
+								title={m.rail_archived()}
+							>
+								<Icon name="archive" size="md" />
+							</IconButton>
+							<!-- Mobile only - rail already covers this on desktop.
+							     Lives here (chat-list level), not in a chat's own
+							     header, since Settings has nothing to do with
+							     whichever chat happens to be open. -->
+							<IconButton
+								theme="light"
+								size="lg"
+								class="md:hidden"
+								onclick={() => {
+									showSettingsView = true;
+									showBookmarks = false;
+									showArchivedView = false;
+									showMediaGallery = false;
+									showChatInfo = false;
+									closeCrossChatSearch();
+								}}
+								aria-label={m.rail_settings()}
+								title={m.rail_settings()}
+							>
+								<Icon name="settings" size="md" />
+							</IconButton>
+						</div>
+					{/if}
+					<input
+						bind:this={sidebarFileInput}
+						type="file"
+						accept=".zip"
+						class="hidden"
+						onchange={(e) => {
+							const input = e.target as HTMLInputElement;
+							if (input.files) handleFilesSelected(input.files);
+						}}
+						multiple
+					/>
+				</div>
+
+				<!-- Chat list -->
+				<div class="flex-1 overflow-hidden">
+					<ChatList
+						chats={appState.chats}
+						selectedIndex={appState.selectedChatIndex}
+						onSelect={handleSelectChat}
+						onDeleteRequest={requestDeleteChat}
+						{languageByChat}
+						onLanguageChange={handleLanguageChange}
+						{autoLoadMediaByChat}
+						onAutoLoadMediaChange={handleAutoLoadMediaChange}
+						{loadingChats}
+						onCancelExtraction={handleCancelExtraction}
+						lockedChats={lockedChatTitles}
+						onToggleLock={handleToggleLock}
+						archivedChats={archivedChatTitles}
+						onToggleArchive={handleToggleArchive}
+						showArchivedOnly={showArchivedView}
+						nameFilter={chatSearchQuery}
+					onSearchMessages={openCrossChatSearch}
+						{chatsNeedingReselect}
+						onOpenReselect={handleOpenReselectChat}
+					/>
+				</div>
+			</div>
+
+			<!-- Overlay for mobile sidebar -->
+			{#if showSidebar}
+				<button
+					class="md:hidden fixed inset-0 bg-black/50 z-30"
+					onclick={() => (showSidebar = false)}
+					aria-label={m.sidebar_close()}
+				></button>
+			{/if}
+
+			<!-- Chat column: header + main content, scoped to this column only
+			     (unlike the sidebar, which has its own separate title bar and
+			     never sits under this header) - matches real WhatsApp Desktop. -->
+			<div class="flex-1 flex flex-col overflow-hidden">
+			<!-- Chat header -->
 			{#if appState.selectedChat && isSelectedChatVisible && !isSelectedChatLocked}
 				{#snippet perspectiveSelectorContent()}
 					<DropdownHeader title={m.perspective_view_as()} />
-					
+
 					<DropdownSearch
 						bind:value={perspectiveSearchQuery}
 						bind:ref={perspectiveSearchInputRef}
 						placeholder={m.perspective_search_placeholder()}
 					/>
-					
+
 					<DropdownList>
 						{#if !perspectiveSearchQuery}
 							<ListItemButton
@@ -2059,7 +2221,7 @@ async function handleForgotPin() {
 						{/if}
 					</DropdownList>
 				{/snippet}
-				
+
 				<!-- Chat header -->
 				<div class="h-16 px-4 flex items-center gap-3 bg-[var(--color-whatsapp-dark-green)] text-white shadow-md flex-shrink-0">
 					<!-- Sidebar toggle button - mobile only, sidebar is always
@@ -2113,7 +2275,7 @@ async function handleForgotPin() {
 							>
 								<Icon name="dots-vertical" size="md" />
 							</IconButton>
-							
+
 							<Dropdown
 								anchor={chatOptionsButtonRef}
 								open={showChatOptionsDropdown}
@@ -2235,7 +2397,7 @@ async function handleForgotPin() {
 								>
 									<Icon name="user" size="md" />
 								</IconButton>
-								
+
 								<Dropdown
 									anchor={perspectiveButtonRef}
 									open={showPerspectiveDropdown}
@@ -2384,149 +2546,6 @@ async function handleForgotPin() {
 				</div>
 			{/if}
 
-			<!-- Content area below header -->
-			<div class="flex-1 flex overflow-hidden">
-				<!-- Sidebar -->
-				<div
-					class="sidebar-panel w-80 flex-shrink-0 border-r border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 flex flex-col {showSidebar ? 'sidebar-open' : 'sidebar-closed'}"
-					class:electron-mac={isElectronMac}
-				>
-				
-				<!-- Chats title bar - matches search bar styling exactly -->
-				<div class="p-3 bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
-					{#if showArchivedView}
-						<div class="flex items-center gap-2 h-10">
-							<IconButton
-								theme="subtle"
-								size="sm"
-								onclick={() => (showArchivedView = false)}
-								aria-label={m.archived_chats_back()}
-								title={m.archived_chats_back()}
-							>
-								<Icon name="chevron-left" size="md" />
-							</IconButton>
-							<span class="font-medium text-gray-800 dark:text-white">{m.archived_chats_title()}</span>
-						</div>
-					{:else}
-						<div class="flex items-center gap-2">
-							<div class="relative flex-1">
-								<div class="absolute inset-y-0 left-3 flex items-center pointer-events-none">
-									<Icon name="search" size="sm" class="text-gray-400" />
-								</div>
-								<input
-									type="text"
-									bind:value={chatSearchQuery}
-									placeholder={m.chats_search_placeholder()}
-									class="w-full h-10 pl-10 pr-9 bg-gray-100 dark:bg-gray-800 rounded-lg text-sm text-gray-800 dark:text-gray-100 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[var(--color-whatsapp-teal)]"
-								/>
-								{#if chatSearchQuery}
-									<button
-										type="button"
-										class="absolute inset-y-0 right-2 flex items-center cursor-pointer text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
-										onclick={() => (chatSearchQuery = '')}
-										aria-label={m.search_clear()}
-										title={m.search_clear()}
-									>
-										<Icon name="close" size="sm" />
-									</button>
-								{/if}
-							</div>
-							<IconButton
-								theme="light"
-								size="lg"
-								onclick={handleSidebarImport}
-								aria-label={m.import_chat()}
-								title={m.import_chat()}
-							>
-								<Icon name="plus" size="md" />
-							</IconButton>
-							<IconButton
-								theme="light"
-								size="lg"
-								onclick={() => {
-									showArchivedView = true;
-									showBookmarks = false;
-									showSettingsView = false;
-									showMediaGallery = false;
-									showChatInfo = false;
-									closeCrossChatSearch();
-								}}
-								aria-label={m.rail_archived()}
-								title={m.rail_archived()}
-							>
-								<Icon name="archive" size="md" />
-							</IconButton>
-							<!-- Mobile only - rail already covers this on desktop.
-							     Lives here (chat-list level), not in a chat's own
-							     header, since Settings has nothing to do with
-							     whichever chat happens to be open. -->
-							<IconButton
-								theme="light"
-								size="lg"
-								class="md:hidden"
-								onclick={() => {
-									showSettingsView = true;
-									showBookmarks = false;
-									showArchivedView = false;
-									showMediaGallery = false;
-									showChatInfo = false;
-									closeCrossChatSearch();
-								}}
-								aria-label={m.rail_settings()}
-								title={m.rail_settings()}
-							>
-								<Icon name="settings" size="md" />
-							</IconButton>
-						</div>
-					{/if}
-					<input
-						bind:this={sidebarFileInput}
-						type="file"
-						accept=".zip"
-						class="hidden"
-						onchange={(e) => {
-							const input = e.target as HTMLInputElement;
-							if (input.files) handleFilesSelected(input.files);
-						}}
-						multiple
-					/>
-				</div>
-
-				<!-- Chat list -->
-				<div class="flex-1 overflow-hidden">
-					<ChatList
-						chats={appState.chats}
-						selectedIndex={appState.selectedChatIndex}
-						onSelect={handleSelectChat}
-						onDeleteRequest={requestDeleteChat}
-						{languageByChat}
-						onLanguageChange={handleLanguageChange}
-						{autoLoadMediaByChat}
-						onAutoLoadMediaChange={handleAutoLoadMediaChange}
-						{loadingChats}
-						onCancelExtraction={handleCancelExtraction}
-						lockedChats={lockedChatTitles}
-						onToggleLock={handleToggleLock}
-						archivedChats={archivedChatTitles}
-						onToggleArchive={handleToggleArchive}
-						showArchivedOnly={showArchivedView}
-						nameFilter={chatSearchQuery}
-					onSearchMessages={openCrossChatSearch}
-						{chatsNeedingReselect}
-						onOpenReselect={handleOpenReselectChat}
-					/>
-				</div>
-			</div>
-
-			<!-- Overlay for mobile sidebar -->
-			{#if showSidebar}
-				<button
-					class="md:hidden fixed inset-0 bg-black/50 z-30"
-					onclick={() => (showSidebar = false)}
-					aria-label={m.sidebar_close()}
-				></button>
-			{/if}
-
 			<!-- Main content -->
 			{#if appState.selectedChat && isSelectedChatVisible && isSelectedChatLocked}
 				<LockedChatPane
@@ -2629,22 +2648,6 @@ async function handleForgotPin() {
 					/>
 				{/if}
 
-				<!-- Chat info panel (slide from right) -->
-				<div
-					class="info-panel w-80 flex-shrink-0 border-l border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 flex flex-col {showChatInfo ? 'info-open' : 'info-closed'}"
-					class:electron-mac={isElectronMac}
-				>
-					<div class="flex-1 overflow-hidden">
-						{#if appState.selectedChat}
-							<InfoPanel
-								chat={appState.selectedChat}
-								{participantStats}
-								onClose={toggleChatInfo}
-							/>
-						{/if}
-					</div>
-				</div>
-
 				<!-- Merge chats modal -->
 				{#if showMergeChatsModal}
 					<MergeChatsModal
@@ -2670,6 +2673,26 @@ async function handleForgotPin() {
 					</div>
 				</div>
 			{/if}
+			</div>
+
+			<!-- Chat info panel (slide from right) - chat-scoped, sits beside
+			     the chat column (not inside it - it's a flex-row sibling that
+			     narrows the chat column horizontally, same as gallery-panel/
+			     bookmarks-panel below). -->
+			{#if appState.selectedChat}
+				<div
+					class="info-panel w-80 flex-shrink-0 border-l border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 flex flex-col {showChatInfo ? 'info-open' : 'info-closed'}"
+					class:electron-mac={isElectronMac}
+				>
+					<div class="flex-1 overflow-hidden">
+						<InfoPanel
+							chat={appState.selectedChat}
+							{participantStats}
+							onClose={toggleChatInfo}
+						/>
+					</div>
+				</div>
+			{/if}
 
 			<!-- Media gallery panel (slide from right) - per-chat mode only.
 			     All-media mode is a global view, mounted full-bleed above
@@ -2683,6 +2706,25 @@ async function handleForgotPin() {
 						<MediaGallery
 							onNavigateToMessage={handleNavigateToMediaMessage}
 							onClose={() => (showMediaGallery = false)}
+						/>
+					</div>
+				</div>
+			{/if}
+
+			<!-- Bookmarks panel (slide from right) - per-chat mode only.
+			     All-chats mode is a global view, mounted full-bleed above
+			     instead (see isInGlobalView). -->
+			{#if bookmarksScope === 'chat'}
+				<div
+					class="bookmarks-panel w-80 flex-shrink-0 border-l border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 flex flex-col {showBookmarks ? 'bookmarks-open' : 'bookmarks-closed'}"
+					class:electron-mac={isElectronMac}
+				>
+					<div class="flex-1 overflow-hidden">
+						<BookmarksPanel
+							currentChatId={appState.selectedChat?.title}
+							onNavigateToMessage={handleNavigateToBookmark}
+							onClose={() => (showBookmarks = false)}
+							indexedChatTitles={appState.indexedChatTitles}
 						/>
 					</div>
 				</div>

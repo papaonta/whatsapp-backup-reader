@@ -11,6 +11,9 @@ export interface ChatMessage {
 	sender: string;
 	content: string;
 	isSystemMessage: boolean;
+	// Renders inline in the sender's own bubble (italic, muted) rather
+	// than as a centered system notice - see isDeletedMessagePlaceholder.
+	isDeletedMessage: boolean;
 	isMediaMessage: boolean;
 	mediaType?:
 		| 'image'
@@ -154,7 +157,10 @@ const SYSTEM_INDICATORS = [
 	'deleted this group',
 	'Messages and calls are end-to-end encrypted',
 	'You created group',
-	'security code changed',
+	'security code changed', // fallback - the real export text usually
+	// inserts a contact name ("security code with X changed"), which
+	// SECURITY_CODE_CHANGE_REGEX below catches; this plain string only
+	// matches the rare case with no name in between.
 	'turned on disappearing messages',
 	'turned off disappearing messages',
 	// Portuguese
@@ -213,6 +219,37 @@ const SYSTEM_INDICATORS = [
 	'heeft het onderwerp gewijzigd',
 	'heeft de groepsfoto gewijzigd',
 	'Berichten en oproepen zijn end-to-end versleuteld',
+];
+
+// Matches "Your security code with <name> changed." regardless of the
+// inserted contact name, which breaks a plain substring match.
+const SECURITY_CODE_CHANGE_REGEX = /security code with .+ changed/i;
+
+// Deleted-message placeholders - kept separate from SYSTEM_INDICATORS
+// since these render inline in the sender's own bubble (italic, muted),
+// not as a centered system notice like a group event.
+const DELETED_MESSAGE_INDICATORS = [
+	// English
+	'you deleted this message',
+	'this message was deleted',
+	// Portuguese
+	'você apagou esta mensagem',
+	'esta mensagem foi apagada',
+	// Spanish
+	'eliminaste este mensaje',
+	'este mensaje fue eliminado',
+	// French
+	'avez supprimé ce message',
+	'ce message a été supprimé',
+	// German
+	'hast diese nachricht gelöscht',
+	'diese nachricht wurde gelöscht',
+	// Italian
+	'hai eliminato questo messaggio',
+	'questo messaggio è stato eliminato',
+	// Dutch
+	'hebt dit bericht verwijderd',
+	'dit bericht is verwijderd',
 ];
 
 /**
@@ -479,8 +516,17 @@ function isMediaMessage(content: string): boolean {
 
 function isSystemMessage(content: string): boolean {
 	const lower = content.toLowerCase();
-	return SYSTEM_INDICATORS.some((indicator) =>
-		lower.includes(indicator.toLowerCase()),
+	return (
+		SYSTEM_INDICATORS.some((indicator) =>
+			lower.includes(indicator.toLowerCase()),
+		) || SECURITY_CODE_CHANGE_REGEX.test(content)
+	);
+}
+
+function isDeletedMessagePlaceholder(content: string): boolean {
+	const lower = content.toLowerCase();
+	return DELETED_MESSAGE_INDICATORS.some((indicator) =>
+		lower.includes(indicator),
 	);
 }
 
@@ -606,6 +652,8 @@ export function parseChat(
 				sender: parsed.sender,
 				content: parsed.content,
 				isSystemMessage: isSystem,
+				isDeletedMessage:
+					!isSystem && isDeletedMessagePlaceholder(parsed.content),
 				isMediaMessage: isMedia,
 				mediaType: isMedia ? detectMediaType(parsed.content) : undefined,
 				rawLine: line,

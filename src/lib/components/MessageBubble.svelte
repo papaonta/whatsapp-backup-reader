@@ -601,7 +601,7 @@ async function transcribeVoiceMessage() {
 				{/if}
 			{:else}
 				<!-- Text content -->
-				<p class="text-sm text-gray-800 dark:text-gray-200 whitespace-pre-wrap break-words">
+				<p class="text-sm whitespace-pre-wrap break-words {message.isDeletedMessage ? 'italic text-gray-500 dark:text-gray-400' : 'text-gray-800 dark:text-gray-200'}">
 					{#if searchQuery && isSearchMatch}
 						{@html highlightText(message.content, searchQuery)}
 					{:else}
