@@ -103,6 +103,8 @@
   "loading_checking": "Checking for existing chat...",
   "loading_extracting": "Extracting...",
   "loading_parsing": "Parsing messages...",
+  "import_cancel_extraction": "Cancel import",
+  "import_cancelling": "Cancelling...",
   "count_messages": "messages",
   "count_media": "media",
   "no_messages": "No messages",

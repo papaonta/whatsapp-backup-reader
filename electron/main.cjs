@@ -338,9 +338,17 @@ ipcMain.handle('file:readFromPath', async (_event, filePath) => {
 });
 
 // Extraction IPC handlers
+const activeExtractions = new Map();
+
 ipcMain.handle(
 	'extraction:extract',
 	async (_event, zipFilePath, extractionId) => {
+		const controller = new AbortController();
+		// Registered before any `await` so a cancel arriving while
+		// validateAbsoluteZipPath is still resolving isn't lost - ipcMain
+		// handlers only run synchronously up to their first await, and a
+		// second invoke on another channel can be processed in that gap.
+		activeExtractions.set(extractionId, controller);
 		try {
 			const normalized = await validateAbsoluteZipPath(zipFilePath);
 			if (!isValidExtractionId(extractionId)) {
@@ -351,6 +359,7 @@ ipcMain.handle(
 				zipPath: normalized,
 				extractionId,
 				extractionRoot: getExtractionRoot(app),
+				signal: controller.signal,
 				onProgress: (progress) => {
 					if (mainWindow && !mainWindow.isDestroyed()) {
 						mainWindow.webContents.send('extraction:progress', {
@@ -365,11 +374,21 @@ ipcMain.handle(
 		} catch (error) {
 			return {
 				success: false,
+				cancelled: controller.signal.aborted,
 				error: error instanceof Error ? error.message : String(error),
 			};
+		} finally {
+			activeExtractions.delete(extractionId);
 		}
 	},
 );
+
+ipcMain.handle('extraction:cancelExtract', async (_event, extractionId) => {
+	const controller = activeExtractions.get(extractionId);
+	if (!controller) return { success: false };
+	controller.abort();
+	return { success: true };
+});
 
 ipcMain.handle('extraction:peekChatText', async (_event, zipFilePath) => {
 	try {

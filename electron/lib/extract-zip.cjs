@@ -174,6 +174,7 @@ async function extractZipToDirectory({
 					filesProcessed++;
 					emitProgress(false);
 				},
+				signal,
 			);
 			entries.push(...recovered);
 		}

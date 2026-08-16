@@ -214,7 +214,42 @@ broken - it may just be another concurrent session's work, already safe.
   counts to the original - not just "a zip got created."
 - Web/browser architecture rework so it can handle large ZIPs the way
   Electron does (currently Electron-only optimization) - not started.
-- Cancel button for an in-progress extraction - not started.
+- **Cancel button for an in-progress extraction (done):** the custom
+  extractor (`electron/lib/extract-zip.cjs` + `zip-reader.cjs`) already
+  had an unused `signal?: AbortSignal` param; wired it up end-to-end -
+  `main.cjs` now tracks in-flight `AbortController`s in an
+  `activeExtractions` Map keyed by `extractionId`, exposes a new
+  `extraction:cancelExtract` IPC channel, and threads the signal into
+  the orphan-recovery pass too (`recoverOrphanEntries`, previously
+  unchecked - the phase most likely to actually run long). On cancel,
+  the existing catch-block cleanup already removes the partial
+  extraction directory, so no new renderer-side cleanup was needed.
+  `ChatList.svelte`'s loading-placeholder row gets a small Cancel
+  icon button, shown only during the `extracting` stage.
+  **Real bug found and fixed via testing**: the first version
+  registered the `AbortController` in the map *after* an `await`
+  (`validateAbsoluteZipPath`), so a cancel arriving in that gap would
+  silently no-op - `ipcMain.handle` callbacks only run synchronously up
+  to their first `await`, and a second `invoke` on another channel can
+  land in that gap. Fixed by registering the controller as the very
+  first statement in the handler. Caught by direct-IPC testing (racing
+  `extract()` against an immediate `cancelExtract()` via
+  `page.evaluate`, not a UI click), not by clicking the button.
+  **Testing note for future sessions**: verifying this specific
+  feature's *UI* (not just the IPC plumbing) via Playwright's
+  `_electron` + `setInputFiles()` didn't work - Electron's legacy
+  `File.path` property (used by `getElectronFilePath()` to decide
+  whether to take the extraction-to-disk path vs. the web/JSZip
+  in-memory fallback) isn't populated on files injected via CDP's
+  `setInputFiles`, so every such import silently falls back to the
+  in-memory path and never touches the Electron extractor at all. The
+  underlying mechanism was instead verified deterministically via
+  direct `window.electronAPI.extraction.*` calls in `page.evaluate`
+  (race the cancel, confirm `cancelled:true`, confirm no orphaned
+  extraction directory via `getStorageUsage`, confirm cancelling an
+  unknown/already-finished id is a safe no-op, confirm a normal import
+  still completes end-to-end) - reuse this approach rather than trying
+  to click the button through a CDP-injected file input again.
 - Windows testing - not done this fork.
 - At-rest encryption for the PIN-lock feature - discussed, explicitly
   **not** implemented. The lock is a UI gate, not encryption (data sits

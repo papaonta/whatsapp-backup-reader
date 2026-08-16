@@ -24,6 +24,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
 	extraction: {
 		extract: (zipFilePath, extractionId) =>
 			ipcRenderer.invoke('extraction:extract', zipFilePath, extractionId),
+		cancelExtract: (extractionId) =>
+			ipcRenderer.invoke('extraction:cancelExtract', extractionId),
 		peekChatText: (zipFilePath) =>
 			ipcRenderer.invoke('extraction:peekChatText', zipFilePath),
 		createMergedChat: (extractionId, chatFileName, chatText, mediaEntries) =>

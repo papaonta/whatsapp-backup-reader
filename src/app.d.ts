@@ -43,6 +43,7 @@ interface ExtractionResult {
 	originalFileName?: string;
 	entries?: ExtractionEntry[];
 	error?: string;
+	cancelled?: boolean;
 }
 
 interface ExtractionProgress {
@@ -94,6 +95,7 @@ interface ElectronAPI {
 			zipFilePath: string,
 			extractionId: string,
 		) => Promise<ExtractionResult>;
+		cancelExtract: (extractionId: string) => Promise<{ success: boolean }>;
 		peekChatText: (zipFilePath: string) => Promise<ChatTextPeekResult>;
 		createMergedChat: (
 			extractionId: string,

@@ -348,6 +348,9 @@ async function tryDecompressBounded(
  * @param {(p: { cursor: number, gapStart: number, gapEnd: number }) => void} [onProgress] -
  *   Called after each recovered entry (this pass has no reliable entry
  *   count upfront, so progress is reported as bytes-through-the-gap).
+ * @param {AbortSignal} [signal] - Checked once per loop iteration so a
+ *   cancel takes effect promptly even during this pass, which can run for
+ *   minutes on real-world exports with many orphaned entries.
  * @returns {Promise<{ name: string, path: string, size: number }[]>}
  */
 async function recoverOrphanEntries(
@@ -357,11 +360,13 @@ async function recoverOrphanEntries(
 	gapEnd,
 	resolveDestPath,
 	onProgress,
+	signal,
 ) {
 	const recovered = [];
 	let cursor = gapStart;
 
 	while (cursor < gapEnd) {
+		if (signal?.aborted) throw new Error('Extraction cancelled');
 		const foundOffset = await findNextLocalFileHeaderSignature(
 			fileHandle,
 			cursor,

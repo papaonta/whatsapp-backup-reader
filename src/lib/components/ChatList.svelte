@@ -21,6 +21,10 @@ interface Props {
 	autoLoadMediaByChat?: Map<string, boolean>;
 	onAutoLoadMediaChange?: (chatTitle: string, enabled: boolean) => void;
 	loadingChats?: LoadingChat[];
+	// Electron-only: cancels an in-progress ZIP extraction (see
+	// +page.svelte's handleCancelExtraction). Undefined on the web build,
+	// where there's no extraction-to-disk step to cancel.
+	onCancelExtraction?: (loadingId: string, extractionId: string) => void;
 	lockedChats?: Set<string>;
 	onToggleLock?: (chatTitle: string, enabled: boolean) => void;
 	archivedChats?: Set<string>;
@@ -53,6 +57,7 @@ let {
 	autoLoadMediaByChat = new Map(),
 	onAutoLoadMediaChange,
 	loadingChats = [],
+	onCancelExtraction,
 	lockedChats = new Set(),
 	onToggleLock,
 	archivedChats = new Set(),
@@ -262,12 +267,32 @@ const sortedChatIndices = $derived.by(() => {
 							<h3 class="font-semibold text-gray-800 dark:text-white truncate">
 								{loadingChat.filename}
 							</h3>
-							<span class="text-xs text-[var(--color-whatsapp-teal)] flex-shrink-0 ml-2">
-								{Math.round(loadingChat.progress)}%
-							</span>
+							<div class="flex items-center gap-2 flex-shrink-0 ml-2">
+								<span class="text-xs text-[var(--color-whatsapp-teal)]">
+									{Math.round(loadingChat.progress)}%
+								</span>
+								{#if onCancelExtraction && loadingChat.extractionId && loadingChat.stage === 'extracting'}
+									<IconButton
+										theme="subtle"
+										size="sm"
+										disabled={loadingChat.cancelling}
+										onclick={() =>
+											onCancelExtraction(
+												loadingChat.id,
+												loadingChat.extractionId ?? '',
+											)}
+										aria-label={m.import_cancel_extraction()}
+										title={m.import_cancel_extraction()}
+									>
+										<Icon name="close" size="sm" />
+									</IconButton>
+								{/if}
+							</div>
 						</div>
 						<p class="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
-							{stageLabels[loadingChat.stage]}
+							{loadingChat.cancelling
+								? m.import_cancelling()
+								: stageLabels[loadingChat.stage]}
 						</p>
 						<!-- Progress bar -->
 						<div class="mt-2 h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">

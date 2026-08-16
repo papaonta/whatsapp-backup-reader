@@ -566,6 +566,9 @@ async function handleFilesSelected(
 					// memory - this is the fix for large (multi-GB) exports
 					// failing silently. See electron/lib/extract-zip.cjs.
 					const extractionId = crypto.randomUUID();
+					loadingChats = loadingChats.map((lc) =>
+						lc.id === loadingId ? { ...lc, extractionId } : lc,
+					);
 					const progressCallback = makeProgressCallback(loadingId);
 					const unsubscribe = electronExtractionApi.onProgress((data) => {
 						if (data.extractionId !== extractionId) return;
@@ -581,6 +584,13 @@ async function handleFilesSelected(
 							extractionId,
 						);
 						if (!result.success || !result.entries || !result.extractionDir) {
+							if (result.cancelled) {
+								const cancelledError = new Error('Extraction cancelled');
+								(
+									cancelledError as Error & { cancelled?: boolean }
+								).cancelled = true;
+								throw cancelledError;
+							}
 							throw new Error(result.error || m.error_parse_failed());
 						}
 
@@ -694,13 +704,25 @@ async function handleFilesSelected(
 				console.error('Error parsing file:', error);
 				// Remove loading placeholder on error
 				loadingChats = loadingChats.filter((lc) => lc.id !== loadingId);
-				appState.setError(
-					error instanceof Error ? error.message : m.error_parse_failed(),
-				);
+				const wasCancelled =
+					error instanceof Error &&
+					(error as Error & { cancelled?: boolean }).cancelled;
+				if (!wasCancelled) {
+					appState.setError(
+						error instanceof Error ? error.message : m.error_parse_failed(),
+					);
+				}
 			}
 		})();
 		handleIndex++;
 	}
+}
+
+function handleCancelExtraction(loadingId: string, extractionId: string) {
+	loadingChats = loadingChats.map((lc) =>
+		lc.id === loadingId ? { ...lc, cancelling: true } : lc,
+	);
+	window.electronAPI?.extraction?.cancelExtract(extractionId);
 }
 
 function handleSelectChat(index: number) {
@@ -2442,6 +2464,7 @@ async function handleForgotPin() {
 						{autoLoadMediaByChat}
 						onAutoLoadMediaChange={handleAutoLoadMediaChange}
 						{loadingChats}
+						onCancelExtraction={handleCancelExtraction}
 						lockedChats={lockedChatTitles}
 						onToggleLock={handleToggleLock}
 						archivedChats={archivedChatTitles}
