@@ -16,7 +16,7 @@ diambil biar gak diulang tanya. Remote "origin" = upstream (read-only),
 remote "mine" = papaonta/whatsapp-backup-reader (push target).
 ```
 
-## Current status (as of commit `c8b9554`, 2026-08-17, not yet pushed)
+## Current status (as of commit `2c93c5b`, 2026-08-17, not yet pushed)
 
 Working through a 6-phase WhatsApp-Desktop-style redesign, brainstormed
 and broken down across several sessions. **All 6 phases are now shipped**
