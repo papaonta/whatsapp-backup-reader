@@ -146,15 +146,20 @@ const MEDIA_INDICATORS = [
 // System message indicators
 const SYSTEM_INDICATORS = [
 	// English
+	// NOTE: bare 'added'/'removed'/'left' are deliberately NOT here - see
+	// isAddedOrRemovedGroupEvent/LEFT_GROUP_REGEX below. A plain substring
+	// check on these misclassified real farewell messages as system
+	// notices (confirmed against real user chat exports - "izin pamit
+	// left group ya", "Saya pamit left ya. Keep in touch semua" both
+	// contain "left" mid-sentence).
 	"joined using this group's invite link",
+	'joined from the community',
 	'created group',
-	'added',
-	'removed',
-	'left',
 	'changed the subject',
 	"changed this group's icon",
 	'changed the group description',
 	'deleted this group',
+	'changed their phone number to a new number',
 	'Messages and calls are end-to-end encrypted',
 	'You created group',
 	'security code changed', // fallback - the real export text usually
@@ -163,6 +168,15 @@ const SYSTEM_INDICATORS = [
 	// matches the rare case with no name in between.
 	'turned on disappearing messages',
 	'turned off disappearing messages',
+	'is now an admin',
+	'is no longer an admin',
+	'kept this message',
+	'this message is no longer kept',
+	'blocked this contact',
+	'unblocked this contact',
+	'shared recent message history',
+	"changed this group's settings to allow only admins",
+	"changed this group's settings to allow all participants",
 	// Portuguese
 	'As mensagens e ligações são protegidas com a criptografia',
 	'Você criou este grupo',
@@ -224,6 +238,26 @@ const SYSTEM_INDICATORS = [
 // Matches "Your security code with <name> changed." regardless of the
 // inserted contact name, which breaks a plain substring match.
 const SECURITY_CODE_CHANGE_REGEX = /security code with .+ changed/i;
+
+// A genuine "X left" system line is always exactly "{name} left" with
+// nothing after - anchoring "left" to the end of the (trimmed) content
+// is what actually distinguishes it from "left" appearing mid-sentence
+// in a real message (see SYSTEM_INDICATORS' comment above).
+const LEFT_GROUP_REGEX = /(?:^|\s)left$/i;
+
+// "X added Y"/"X removed Y" system lines are always short. A bare
+// substring check on "added"/"removed" alone risks the same false-
+// positive class as "left" (not confirmed in the sampled real chats,
+// but same risk shape) - capping to plausible system-line length is a
+// cheap safety net over no cap at all.
+const MAX_GROUP_EVENT_LENGTH = 100;
+const ADDED_OR_REMOVED_REGEX = /\b(added|removed)\b/i;
+function isAddedOrRemovedGroupEvent(content: string): boolean {
+	return (
+		content.trim().length <= MAX_GROUP_EVENT_LENGTH &&
+		ADDED_OR_REMOVED_REGEX.test(content)
+	);
+}
 
 // Deleted-message placeholders - kept separate from SYSTEM_INDICATORS
 // since these render inline in the sender's own bubble (italic, muted),
@@ -510,7 +544,10 @@ function isSystemMessage(content: string): boolean {
 	return (
 		SYSTEM_INDICATORS.some((indicator) =>
 			lower.includes(indicator.toLowerCase()),
-		) || SECURITY_CODE_CHANGE_REGEX.test(content)
+		) ||
+		SECURITY_CODE_CHANGE_REGEX.test(content) ||
+		LEFT_GROUP_REGEX.test(content) ||
+		isAddedOrRemovedGroupEvent(content)
 	);
 }
 

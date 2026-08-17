@@ -150,7 +150,7 @@ function handleKeydown(e: KeyboardEvent) {
 	<div class="p-3 bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
 		<div class="flex items-center justify-between h-10">
 			<div class="flex items-center gap-2">
-			<Icon name="bookmark" filled class="text-[var(--color-whatsapp-teal)]" />
+			<Icon name="star" filled class="text-[var(--color-whatsapp-teal)]" />
 				<h2 class="font-semibold text-gray-900 dark:text-gray-100">{m.bookmarks_header_title()}</h2>
 				<span class="text-xs text-gray-400 bg-gray-100 dark:bg-gray-700 px-2 py-0.5 rounded-full">
 					{displayedBookmarks.length}
@@ -203,7 +203,7 @@ function handleKeydown(e: KeyboardEvent) {
 	<div class="flex-1 overflow-y-auto">
 		{#if displayedBookmarks.length === 0}
 			<div class="flex flex-col items-center justify-center h-full px-4 py-8 text-center">
-			<Icon name="bookmark-outline" size="2xl" class="text-gray-300 dark:text-gray-600 mb-3" />
+			<Icon name="star-outline" size="2xl" class="text-gray-300 dark:text-gray-600 mb-3" />
 				<p class="text-gray-500 dark:text-gray-400 text-sm">
 					{filterMode === 'current' ? m.bookmarks_empty_current_chat() : m.bookmarks_empty()}
 				</p>
@@ -234,7 +234,7 @@ function handleKeydown(e: KeyboardEvent) {
 							>
 								<div class="flex items-start gap-3">
 									<div class="flex-shrink-0 mt-0.5">
-									<Icon name="bookmark" size="sm" class="text-[var(--color-whatsapp-teal)]" filled />
+									<Icon name="star" size="sm" class="text-[var(--color-whatsapp-teal)]" filled />
 									</div>
 									<div class="flex-1 min-w-0">
 										<div class="flex items-center gap-2 mb-0.5">

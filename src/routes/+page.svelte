@@ -759,6 +759,11 @@ function handleSelectChat(index: number) {
 	// exit it.
 	showSettingsView = false;
 	appState.selectChat(index);
+	// scrollToMessageId is never reset after a successful "go to message"
+	// navigation (see navigateToMessageInChat) - clear it here so a later,
+	// unrelated normal chat open doesn't get its fresh "scroll to bottom"
+	// suppressed by ChatView mistaking a stale target for a pending one.
+	scrollToMessageId = null;
 	// Set the transcription language for this chat
 	const chat = appState.chats[index];
 	if (chat) {
@@ -902,7 +907,13 @@ async function navigateToMessageInChat(messageId: string, chatTitle: string) {
 		appState.selectChat(chatIndex);
 	}
 
-	scrollToMessageId = null;
+	// No need to null-then-set scrollToMessageId here: closing the global
+	// view above always unmounts/remounts ChatView (it fully owns the
+	// screen while shown), so lastProcessedScrollId is already fresh on
+	// the new instance. Setting scrollToMessageId to null first used to
+	// leave a window where the freshly-mounted ChatView briefly observed
+	// scrollToMessageId as null, tricking its "scroll to bottom" guard
+	// into thinking no message-scroll was pending.
 	await tick();
 
 	const delay = needsChatSwitch ? 300 : 0;
@@ -1360,6 +1371,22 @@ $effect(() => {
 	})();
 });
 
+// Keep every loaded chat's persisted bookmarks in sync with
+// bookmarksState (add/edit/remove/import/clear all funnel through the
+// same reactive `bookmarks` array) - see persistBookmarksForChat's
+// comment for why this is needed. Re-persisting every loaded chat on
+// each change is simpler than diffing which chat(s) were actually
+// affected; bookmark edits are infrequent, user-driven actions, not a
+// hot path, and persistBookmarksForChat is already a no-op for any chat
+// that hasn't finished its initial persistChat save.
+$effect(() => {
+	bookmarksState.bookmarks; // reactive dependency
+	if (!browser) return;
+	for (const chat of appState.chats) {
+		persistBookmarksForChat(chat.title);
+	}
+});
+
 // Restores every given persisted chat. A chat that can't restore silently
 // (web-only - reselecting a File or requesting File System Access
 // permission both need a fresh user gesture, which a launch-time pass
@@ -1423,6 +1450,15 @@ async function handleRestoreChats(persistedChats: PersistedChatMetadata[]) {
 					persistedId: persistedChat.id,
 				});
 			}
+
+			// chatFileReferences is a plain (non-reactive) Map, set here -
+			// *after* applyRestoredChatData already ran importBookmarks +
+			// addChat - so the bookmarks-sync $effect (which depends on
+			// reactive state, not this Map) has no way to know persistedId
+			// just became available and never gets a second chance to fire
+			// for this chat. Nudge it explicitly so a restored chat's
+			// bookmarks don't silently stay unpersisted forever.
+			persistBookmarksForChat(persistedChat.chatTitle);
 		} catch (e) {
 			console.error(`Error restoring chat ${persistedChat.chatTitle}:`, e);
 			showToast(m.persistence_restore_failed(), 'error');
@@ -1792,6 +1828,30 @@ async function persistArchivedFlag(chatTitle: string, archived: boolean) {
 		});
 	} catch (e) {
 		console.error('Failed to persist archive state:', e);
+	}
+}
+
+// Keep a chat's persisted bookmarks in sync with bookmarksState. No-op if
+// the chat hasn't finished its initial persistChat save yet - mirrors
+// persistLockedFlag/persistArchivedFlag above. bookmarksState itself stays
+// decoupled from persistence; the $effect below (which calls this for
+// every loaded chat whenever bookmarksState.bookmarks changes) is the one
+// spot that bridges the two. Previously bookmarks were only ever captured
+// into persisted storage once, at import time (when there are usually
+// none yet) - anything starred afterward never got saved, wiping every
+// starred message on refresh/restart.
+async function persistBookmarksForChat(chatTitle: string) {
+	const persistedId = chatFileReferences.get(chatTitle)?.persistedId;
+	if (!persistedId) return;
+	try {
+		// Bookmark objects are Svelte 5 $state proxies - IndexedDB's
+		// structured clone can't serialize them directly (DataCloneError),
+		// so snapshot to plain objects first.
+		await updatePersistedChat(persistedId, {
+			bookmarks: $state.snapshot(bookmarksState.getBookmarksForChat(chatTitle)),
+		});
+	} catch (e) {
+		console.error('Failed to persist bookmarks:', e);
 	}
 }
 
@@ -2346,7 +2406,7 @@ async function handleForgotPin() {
 												toggleBookmarks();
 											}}
 										>
-											<Icon name="bookmark" size="sm" />
+											<Icon name="star" size="sm" />
 											<span>{m.bookmarks_title()}</span>
 										</ListItemButton>
 										<ListItemButton
@@ -2455,7 +2515,7 @@ async function handleForgotPin() {
 								title={m.bookmarks_title()}
 								aria-label={m.bookmarks_toggle()}
 							>
-								<Icon name="bookmark" size="md" filled={showBookmarks} />
+								<Icon name="star" size="md" filled={showBookmarks} />
 							</IconButton>
 							<IconButton
 								theme="dark"

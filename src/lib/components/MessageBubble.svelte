@@ -372,9 +372,9 @@ async function transcribeVoiceMessage() {
 		title={isBookmarked ? m.bookmarks_edit() : m.bookmarks_add()}
 	>
 		{#if isBookmarked}
-		<Icon name="bookmark" size="sm" class="text-[var(--color-whatsapp-teal)]" filled />
+		<Icon name="star" size="sm" class="text-[var(--color-whatsapp-teal)]" filled />
 		{:else}
-		<Icon name="bookmark-outline" size="sm" class="text-gray-400 dark:text-gray-500" />
+		<Icon name="star-outline" size="sm" class="text-gray-400 dark:text-gray-500" />
 		{/if}
 	</button>
 {/snippet}

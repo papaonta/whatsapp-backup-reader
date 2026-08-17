@@ -320,8 +320,28 @@ $effect(() => {
 // Scroll to bottom when messages first load
 $effect(() => {
 	if (messages.length > 0 && chatContainer && !hasScrolledToBottom) {
+		// If there's a pending "go to message" target that belongs to this
+		// chat, defer to that scroll instead of also jumping to the bottom -
+		// the two used to race (this effect's instant scrollTop jump always
+		// won over scrollToMessageWithRetry's smooth-scroll animation),
+		// which is why "Go to message" from Starred/All Media landed on a
+		// freshly (re)mounted ChatView but visually ended up at the bottom.
+		if (scrollToMessageId && messageIndexMap.has(scrollToMessageId)) {
+			hasScrolledToBottom = true;
+			return;
+		}
 		requestAnimationFrame(() => {
-			if (chatContainer) {
+			// Re-check live, not the values captured when this callback was
+			// scheduled: scrollToMessageId can flip from null/stale to a
+			// real in-chat target between scheduling and firing (it's set
+			// one microtask-chain after ChatView mounts, which resolves
+			// before this rAF's paint), and this callback must not clobber
+			// that pending navigation once it does.
+			if (
+				chatContainer &&
+				!hasScrolledToBottom &&
+				!(scrollToMessageId && messageIndexMap.has(scrollToMessageId))
+			) {
 				chatContainer.scrollTop = chatContainer.scrollHeight;
 				hasScrolledToBottom = true;
 			}

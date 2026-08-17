@@ -1,9 +1,14 @@
 /**
- * Bookmarks state management using Svelte 5 runes
- * Allows users to bookmark messages with optional comments
+ * Bookmarks (Starred) state management using Svelte 5 runes.
+ * Allows users to star messages with optional comments.
  *
- * NOTE: Bookmarks are NOT persisted automatically.
- * Users must export/import bookmarks manually each session.
+ * This module itself stays decoupled from persistence - it's plain
+ * in-memory `$state`. `+page.svelte` bridges it to IndexedDB via an
+ * `$effect` watching `bookmarks` that calls `persistBookmarksForChat`
+ * for every loaded chat, and restores from `PersistedChatMetadata.bookmarks`
+ * on chat load via `importBookmarks`. Manual export/import (below) is a
+ * separate, additional way to move bookmarks between sessions/devices,
+ * not the only one.
  */
 
 import { triggerDownload } from '$lib/helpers/download';

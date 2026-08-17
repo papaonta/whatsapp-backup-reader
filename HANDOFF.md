@@ -16,7 +16,7 @@ diambil biar gak diulang tanya. Remote "origin" = upstream (read-only),
 remote "mine" = papaonta/whatsapp-backup-reader (push target).
 ```
 
-## Current status (as of commit `f0bb0a4`, 2026-08-16, not yet pushed)
+## Current status (as of commit `2f1fc7c`, 2026-08-17, not yet pushed)
 
 Working through a 6-phase WhatsApp-Desktop-style redesign, brainstormed
 and broken down across several sessions. **All 6 phases are now shipped**
@@ -399,6 +399,95 @@ broken - it may just be another concurrent session's work, already safe.
   the same way, so they can't resolve to a name the same way - see the
   conversation, not written up further here) - designed so a second
   signal could slot in the same way if one is ever confirmed reliable.
+- **System-message false positives + Starred rename + persistence bug +
+  go-to-message scroll + star-from-All-Media (done):** another hands-on
+  round, this time cross-checked against the user's own two real chat
+  exports (grepped via `ditto`, same corrupted-central-directory
+  workaround the app's own unzip needs) plus a comprehensive official
+  WhatsApp system-message string list the user supplied.
+  - **Real bug found in real data:** `isSystemMessage()`'s bare
+    `'left'`/`'added '`/`'removed '` substring checks misclassified
+    genuine farewell messages ("izin pamit **left** group ya 🤗") as
+    system pills. Tightened `'left'` to `/(?:^|\s)left$/i` (must be the
+    last word) and capped `'added'`/`'removed'` to short content
+    (`isAddedOrRemovedGroupEvent`, ≤100 chars) in `chat-parser.ts`.
+    Added new confirmed-real indicator ("changed their phone number to
+    a new number") plus several more from the official list that
+    weren't in the sampled data but are well-known official strings
+    (admin promote/demote, kept/unkept message, block/unblock, shared
+    message history, community join, group-settings-changed variants).
+    Skipped the list's "profile picture"/"profile name" entries -
+    grepping real data showed those as false-positive risks with no
+    safe pattern to build from.
+  - **Starred rename:** `messages/en.json`'s bookmark-related *values*
+    (not key names) now say "Star"/"Starred" everywhere user-facing;
+    new `star-outline` icon in `Icon.svelte` (same path as `star`,
+    `stroke` not `fill`, mirrors the `bookmark`/`bookmark-outline`
+    pair); every bookmark-icon usage swapped. `bookmarksState`/
+    `BookmarksPanel.svelte`/`BookmarkModal.svelte` etc. stay named as-is
+    internally - labels/icons only, same precedent as Fase 2's rail
+    relabel.
+  - **Real bug fixed: bookmarks weren't persisted at all** (refresh or
+    restart wiped every starred message - `bookmarks.svelte.ts`'s own
+    old header comment said so explicitly). New
+    `persistBookmarksForChat()` in `+page.svelte` + an `$effect`
+    watching `bookmarksState.bookmarks` that calls it for every loaded
+    chat, mirroring the existing `persistLockedFlag`/
+    `persistArchivedFlag` pattern against `PersistedChatMetadata.bookmarks`.
+    Two gotchas: (1) `$state`-proxied `Bookmark[]` throws
+    `DataCloneError` against IndexedDB's structured clone unless wrapped
+    in `$state.snapshot()` first; (2) the restore path sets
+    `chatFileReferences` (a plain, non-reactive `Map`) *after*
+    `applyRestoredChatData` already fired the reactive triggers the
+    `$effect` depends on, so it never got a second chance to run for a
+    restored chat's `persistedId` - fixed with an explicit
+    `persistBookmarksForChat(...)` nudge right after the `Map` is set in
+    `handleRestoreChats`. `generateDeterministicId()` confirmed to be a
+    pure content hash, not time-of-parse, so bookmark `messageId`s stay
+    valid across re-parses/restarts.
+  - **Go-to-message didn't scroll to the specific message:** root cause
+    was a race in `ChatView.svelte` between two `$effect`s - "scroll to
+    bottom on first load" (fires because the component fully
+    remounts whenever a global view like Starred/All Media closes,
+    resetting `hasScrolledToBottom`) and "scroll to the specific
+    message" (`scrollToMessageWithRetry`, smooth-scroll). The instant
+    bottom-jump always won over the still-animating smooth scroll,
+    regardless of which effect *started* first, because the bottom-jump
+    was scheduled via `requestAnimationFrame` at mount time - before
+    `scrollToMessageId` had even been set to its real target - and that
+    already-queued callback fired later regardless of what the
+    triggering effect's own re-evaluation later concluded. Fixed by (1)
+    re-checking live state *inside* the rAF callback itself (not just
+    when scheduling it) - skip the bottom-jump if `scrollToMessageId`
+    now resolves to a message in this chat's `messageIndexMap`; (2)
+    removing a vestigial `scrollToMessageId = null` step in
+    `navigateToMessageInChat` (`+page.svelte`) that existed to force a
+    reset but is unnecessary since ChatView always remounts on this
+    path anyway - it was the reason the live value wasn't visible yet at
+    mount time; (3) since `scrollToMessageId` is otherwise never reset
+    to `null` after a successful navigation, added a reset in
+    `handleSelectChat` (normal chat-list open) so a stale target from an
+    old navigation can't suppress a later, unrelated chat's normal
+    scroll-to-bottom. Verified live via Playwright bounding-box checks
+    (both a text message from Starred and a media message from All
+    Media land the target inside the viewport, highlighted).
+  - **Star-from-All-Media (new feature):** lightbox in
+    `MediaGallery.svelte` gets a star toggle next to "Go to message"
+    (same `item.messageId` visibility gate), reusing `BookmarkModal`
+    exactly like `MessageBubble.svelte` does - `newBookmarkData` built
+    from `GalleryItem` fields, with `messageContent` looked up from the
+    owning chat's `messagesById` map (falls back to the filename if the
+    chat/message can't be found). Verified live end-to-end: star a
+    media item from the lightbox → shows up in Starred with correct
+    sender/timestamp/content → "Go to" from there scrolls straight to
+    and highlights the message.
+  - Test-fixture note: `examples/chats/ios-group-chat.zip`'s two
+    "(file attached)" references (WA0005/WA0006) don't have matching
+    files actually in the zip, and its two images that DO exist
+    (WA0001/WA0004) aren't referenced by any message line - so it has
+    zero *linked* media items for testing media-star/go-to. Use
+    `ios-private-chat.zip` instead (its 4 attachments are fully
+    matched) for anything media-linkage-related.
 
 ## Working conventions established across sessions (don't relitigate)
 

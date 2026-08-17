@@ -2,6 +2,7 @@
 import JSZip from 'jszip';
 import { onDestroy, tick } from 'svelte';
 import { browser } from '$app/environment';
+import { bookmarksState } from '$lib/bookmarks.svelte';
 import {
 	ALL_MEDIA_SYNC_KEY,
 	type DateKey,
@@ -15,6 +16,7 @@ import * as m from '$lib/paraglide/messages';
 import { getLocale } from '$lib/paraglide/runtime';
 import { getMediaBytes, loadMediaFile, mediaFileHasSource } from '$lib/parser';
 import { appState } from '$lib/state.svelte';
+import BookmarkModal from './BookmarkModal.svelte';
 import Dropdown from './Dropdown.svelte';
 import DropdownList from './DropdownList.svelte';
 import DropdownSearch from './DropdownSearch.svelte';
@@ -57,6 +59,27 @@ const lightboxItem = $derived.by(() => {
 	const id = lightboxId;
 	if (!id) return null;
 	return items.find((it) => it.id === id) ?? null;
+});
+
+let showBookmarkModal = $state(false);
+
+// Drives the star button's filled/outline state and whether clicking it
+// opens BookmarkModal in edit vs create mode.
+const lightboxBookmark = $derived.by(() =>
+	lightboxItem?.messageId
+		? bookmarksState.getBookmark(lightboxItem.messageId)
+		: undefined,
+);
+
+// GalleryItem doesn't carry the message's own content, only metadata - look
+// it up from the owning chat's messagesById map for the star modal's
+// preview; fall back to the media filename if the chat/message can't be
+// found (e.g. chat unloaded), same fallback MessageBubble's own star button
+// never needs since it always has the live message object.
+const lightboxMessageContent = $derived.by(() => {
+	if (!lightboxItem?.messageId) return undefined;
+	const chat = appState.chats.find((c) => c.title === lightboxItem.chatTitle);
+	return chat?.messagesById?.get(lightboxItem.messageId)?.content;
 });
 
 let lightboxUrl = $state<string | null>(null);
@@ -843,6 +866,15 @@ onDestroy(() => {
 							>
 								<Icon name="arrow-circle-right" size="md" />
 							</button>
+							<button
+								type="button"
+								class="h-9 w-9 inline-flex items-center justify-center rounded-lg text-[var(--color-whatsapp-teal)] hover:bg-[var(--color-whatsapp-teal)]/10 dark:hover:bg-[var(--color-whatsapp-teal)]/15 transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-whatsapp-teal)]/60"
+								onclick={() => (showBookmarkModal = true)}
+								aria-label={lightboxBookmark ? m.bookmarks_edit() : m.bookmarks_add()}
+								title={lightboxBookmark ? m.bookmarks_edit() : m.bookmarks_add()}
+							>
+								<Icon name={lightboxBookmark ? 'star' : 'star-outline'} size="md" />
+							</button>
 						{:else}
 							<span class="text-xs text-gray-500 dark:text-gray-400 px-2 py-1 rounded-lg bg-gray-100 dark:bg-gray-700">
 								{m.media_gallery_unlinked()}
@@ -900,5 +932,20 @@ onDestroy(() => {
 				</div>
 			</div>
 		</div>
+		{#if showBookmarkModal && lightboxItem.messageId}
+			<BookmarkModal
+				bookmark={lightboxBookmark}
+				newBookmarkData={lightboxBookmark ? undefined : {
+					messageId: lightboxItem.messageId,
+					chatId: lightboxItem.chatTitle,
+					messageContent: lightboxMessageContent ?? lightboxItem.name,
+					sender: lightboxItem.messageSender ?? '',
+					messageTimestamp: lightboxItem.messageTimestamp
+						? new Date(lightboxItem.messageTimestamp)
+						: new Date(),
+				}}
+				onClose={() => (showBookmarkModal = false)}
+			/>
+		{/if}
 	{/if}
 </div>

@@ -39,19 +39,19 @@ function handleClick(e: MouseEvent) {
 	aria-label={isBookmarked ? m.bookmarks_edit() : m.bookmarks_add()}
 >
 	{#if isBookmarked}
-		<!-- Filled bookmark icon -->
-		<Icon 
-			name="bookmark" 
-			filled 
-			size="sm" 
-			class="text-[var(--color-whatsapp-teal)] hover:text-[var(--color-whatsapp-dark)] transition-colors" 
+		<!-- Filled star icon -->
+		<Icon
+			name="star"
+			filled
+			size="sm"
+			class="text-[var(--color-whatsapp-teal)] hover:text-[var(--color-whatsapp-dark)] transition-colors"
 		/>
 	{:else}
-		<!-- Outline bookmark icon -->
-		<Icon 
-			name="bookmark-outline" 
-			size="sm" 
-			class="text-gray-400 hover:text-[var(--color-whatsapp-teal)] dark:text-gray-500 dark:hover:text-[var(--color-whatsapp-teal)] transition-colors" 
+		<!-- Outline star icon -->
+		<Icon
+			name="star-outline"
+			size="sm"
+			class="text-gray-400 hover:text-[var(--color-whatsapp-teal)] dark:text-gray-500 dark:hover:text-[var(--color-whatsapp-teal)] transition-colors"
 		/>
 	{/if}
 </button>
