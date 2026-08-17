@@ -227,29 +227,20 @@ const SECURITY_CODE_CHANGE_REGEX = /security code with .+ changed/i;
 
 // Deleted-message placeholders - kept separate from SYSTEM_INDICATORS
 // since these render inline in the sender's own bubble (italic, muted),
-// not as a centered system notice like a group event.
-const DELETED_MESSAGE_INDICATORS = [
-	// English
-	'you deleted this message',
-	'this message was deleted',
-	// Portuguese
-	'você apagou esta mensagem',
-	'esta mensagem foi apagada',
-	// Spanish
-	'eliminaste este mensaje',
-	'este mensaje fue eliminado',
-	// French
-	'avez supprimé ce message',
-	'ce message a été supprimé',
-	// German
-	'hast diese nachricht gelöscht',
-	'diese nachricht wurde gelöscht',
-	// Italian
-	'hai eliminato questo messaggio',
-	'questo messaggio è stato eliminato',
-	// Dutch
-	'hebt dit bericht verwijderd',
-	'dit bericht is verwijderd',
+// not as a centered system notice like a group event. Paired per locale
+// as [own, other] - "own" only ever appears on the export owner's own
+// deleted messages ("You deleted..."), "other" for everyone else's
+// ("This message was deleted."). Kept paired (not two flat lists) so
+// isDeletedMessagePlaceholder (uses both) and inferOwnerFromDeletedMessage
+// (uses "own" only) can't drift out of sync with each other.
+const DELETED_MESSAGE_INDICATOR_PAIRS: [own: string, other: string][] = [
+	['you deleted this message', 'this message was deleted'], // English
+	['você apagou esta mensagem', 'esta mensagem foi apagada'], // Portuguese
+	['eliminaste este mensaje', 'este mensaje fue eliminado'], // Spanish
+	['avez supprimé ce message', 'ce message a été supprimé'], // French
+	['hast diese nachricht gelöscht', 'diese nachricht wurde gelöscht'], // German
+	['hai eliminato questo messaggio', 'questo messaggio è stato eliminato'], // Italian
+	['hebt dit bericht verwijderd', 'dit bericht is verwijderd'], // Dutch
 ];
 
 /**
@@ -525,9 +516,39 @@ function isSystemMessage(content: string): boolean {
 
 function isDeletedMessagePlaceholder(content: string): boolean {
 	const lower = content.toLowerCase();
-	return DELETED_MESSAGE_INDICATORS.some((indicator) =>
-		lower.includes(indicator),
+	return DELETED_MESSAGE_INDICATOR_PAIRS.some(
+		([own, other]) => lower.includes(own) || lower.includes(other),
 	);
+}
+
+/**
+ * Infers which participant is "you" (the export owner) from a deleted-
+ * message placeholder attributed to them - "You deleted this message."
+ * only ever appears on the device owner's own messages, unlike "This
+ * message was deleted." for everyone else's (see
+ * DELETED_MESSAGE_INDICATOR_PAIRS). A far more reliable signal than
+ * name/phone matching since it's unambiguous when present, but only
+ * available opportunistically (only if the chat happens to contain a
+ * deleted message from the owner). Returns null if no such message
+ * exists, or if different senders both show the "own" phrasing (a
+ * conflicting signal that shouldn't happen in a genuine single-export
+ * chat - safer to infer nothing than guess wrong).
+ */
+export function inferOwnerFromDeletedMessage(
+	messages: ChatMessage[],
+): string | null {
+	let owner: string | null = null;
+	for (const message of messages) {
+		if (!message.sender) continue;
+		const lower = message.content.toLowerCase();
+		const isOwn = DELETED_MESSAGE_INDICATOR_PAIRS.some(([own]) =>
+			lower.includes(own),
+		);
+		if (!isOwn) continue;
+		if (owner !== null && owner !== message.sender) return null;
+		owner = message.sender;
+	}
+	return owner;
 }
 
 function parseLine(line: string): {

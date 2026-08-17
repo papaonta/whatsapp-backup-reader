@@ -6,6 +6,7 @@ export {
 	generateDeterministicId,
 	getChatStats,
 	groupMessagesByDate,
+	inferOwnerFromDeletedMessage,
 	parseChat,
 	toLocalDateKey,
 } from './chat-parser';

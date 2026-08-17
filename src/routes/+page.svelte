@@ -119,6 +119,7 @@ import { getLocale } from '$lib/paraglide/runtime';
 import {
 	checkForDuplicateImport,
 	getMediaBytes,
+	inferOwnerFromDeletedMessage,
 	mediaFileHasSource,
 	parseExtractedChat,
 	parseZipFile,
@@ -704,6 +705,7 @@ async function handleFilesSelected(
 				}
 
 				appState.addChat(chatData);
+				applyDeletedMessagePerspectiveIfNeeded(chatData);
 				applyDefaultIdentityIfNeeded(chatData);
 
 				// Store file reference for persistence
@@ -939,6 +941,22 @@ function matchesDefaultIdentity(participant: string, identity: string): boolean 
 		return aDigits.slice(-tailLen) === bDigits.slice(-tailLen);
 	}
 	return false;
+}
+
+// Called right after a chat is added via a fresh import or a merge (same
+// timing/gating as applyDefaultIdentityIfNeeded below, see its comment) -
+// a "You deleted this message." placeholder unambiguously identifies the
+// export owner (only their own deleted messages get "You" phrasing), so
+// this takes priority over the name/phone heuristic below: if it finds a
+// match, applyDefaultIdentityIfNeeded's own `perspectiveByChat.has(...)`
+// gate makes it a no-op afterward. Opportunistic - most chats won't have
+// a deleted message to key off, same caveat Default Identity already has.
+function applyDeletedMessagePerspectiveIfNeeded(chatData: ChatData) {
+	if (perspectiveByChat.has(chatData.title)) return;
+	const owner = inferOwnerFromDeletedMessage(chatData.messages);
+	if (!owner) return;
+	perspectiveByChat.set(chatData.title, owner);
+	perspectiveByChat = new Map(perspectiveByChat);
 }
 
 // Called right after a chat is added via a fresh import or a merge (never
@@ -1254,6 +1272,7 @@ async function handleMergeChats(otherChats: ChatData[], mergedTitle: string) {
 	}
 
 	appState.addChat(chatData);
+	applyDeletedMessagePerspectiveIfNeeded(chatData);
 	applyDefaultIdentityIfNeeded(chatData);
 	startIndexWorker(chatData);
 

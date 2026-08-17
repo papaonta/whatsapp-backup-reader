@@ -374,6 +374,31 @@ broken - it may just be another concurrent session's work, already safe.
     not just screenshots - the info-panel regression above would have
     been easy to miss from a screenshot alone since the page doesn't
     show an error, just an empty-looking chat pane.
+- **Auto-infer "View as" from a deleted-message placeholder (done):**
+  user's own idea - "You deleted this message." only ever appears on
+  the export owner's own messages (unlike "This message was deleted."
+  for everyone else's), so it unambiguously identifies who "you" are,
+  no configuration needed. New `inferOwnerFromDeletedMessage()` in
+  `chat-parser.ts`, exported via `parser/index.ts`. Refactored the
+  round-2 deleted-message indicator list into
+  `DELETED_MESSAGE_INDICATOR_PAIRS: [own, other][]` (was two flat lists)
+  so the "own" subset used here can't drift out of sync with
+  `isDeletedMessagePlaceholder`'s use of both. New
+  `applyDeletedMessagePerspectiveIfNeeded()` in `+page.svelte`, called
+  right before `applyDefaultIdentityIfNeeded()` at both its call sites
+  (fresh import + merge, never restore - same gating/reasoning as
+  Default Identity) - takes priority since it's a hard signal rather
+  than a name/phone heuristic; if it sets a perspective,
+  `applyDefaultIdentityIfNeeded`'s own already-set guard makes it a
+  no-op after. Opportunistic like Default Identity - only fires if the
+  chat happens to contain such a message. Verified live: a chat where
+  "Bob" has a "You deleted this message." line auto-opens with Bob's
+  messages on the right (own-message side), zero settings touched.
+  Explicitly scoped to just this one signal for now (group-event system
+  messages like "You created group X" don't carry sender attribution
+  the same way, so they can't resolve to a name the same way - see the
+  conversation, not written up further here) - designed so a second
+  signal could slot in the same way if one is ever confirmed reliable.
 
 ## Working conventions established across sessions (don't relitigate)
 
