@@ -488,6 +488,47 @@ broken - it may just be another concurrent session's work, already safe.
     zero *linked* media items for testing media-star/go-to. Use
     `ios-private-chat.zip` instead (its 4 attachments are fully
     matched) for anything media-linkage-related.
+- **Go-to-message race fix wasn't actually deterministic; made it so, plus
+  a close-chat button and a scroll-to-bottom button (done):** user
+  reported the go-to-message fix above still failed specifically when no
+  chat switch was needed (already viewing the target chat, star a message,
+  Starred → Go to → lands nowhere sensible) but worked fine after
+  switching to a different chat first, both for Starred and All Media.
+  - Root cause: the previous fix (re-checking live state inside the rAF
+    callback) only narrowed the race, it didn't eliminate it -
+    `navigateToMessageInChat` still set `scrollToMessageId` *after*
+    `await tick()` (immediately, with zero delay, when no chat switch was
+    needed), leaving a window where ChatView's mount-time effect run
+    could still observe the old/stale value before the real target
+    landed. Fixed properly this time: `scrollToMessageId = messageId` now
+    happens synchronously, before `await tick()` - since closing the
+    global view (and switching chats, if needed) both happen
+    synchronously beforehand, ChatView's very first effect run already
+    sees the correct target, no race window at all regardless of timing.
+    The 300ms post-switch delay is now purely cosmetic (kept so the
+    transition doesn't look jarring) since `scrollToMessageWithRetry`'s
+    own retry loop already handles waiting for the new chat's DOM to be
+    ready. Lesson: a race "usually" fixed by narrowing the window is
+    still a race - test the exact failing scenario the user described (no
+    chat switch), not just a scenario that happens to avoid it. Verified
+    live for both Starred and All Media, explicitly in the no-switch case
+    this time (open the target chat first, star/note a message inside it,
+    then go straight to Starred/All Media → Go to, without visiting
+    another chat in between).
+  - **New: "Close chat" button** - deselects the current chat back to the
+    "select a chat" empty state (`appState.selectChat(null)`), without
+    touching the chat list. Added to the header's desktop icon row, the
+    mobile options dropdown, and the locked-chat compact header (which
+    previously had no way to back out without unlocking). New
+    `handleCloseChat()` in `+page.svelte`, mirrors `handleSelectChat`'s
+    `scrollToMessageId` reset for the same reason.
+  - **New: floating "scroll to bottom" button** in `ChatView.svelte` -
+    appears once the user scrolls more than 400px away from the latest
+    message (tracked in the existing `handleScroll` handler, no new
+    listener needed), smooth-scrolls to `scrollHeight` on click. Root
+    template wrapped in a `relative` div so the button can be absolutely
+    positioned over the message list; state resets on chat change
+    alongside `hasScrolledToBottom`.
 
 ## Working conventions established across sessions (don't relitigate)
 

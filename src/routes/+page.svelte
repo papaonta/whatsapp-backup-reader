@@ -776,6 +776,14 @@ function handleSelectChat(index: number) {
 	}
 }
 
+// Deselects the current chat - back to the "select a chat" empty state,
+// without closing the app or touching the chat list itself.
+function handleCloseChat() {
+	showSettingsView = false;
+	appState.selectChat(null);
+	scrollToMessageId = null;
+}
+
 // Clears every per-chat piece of local state keyed by title - shared by
 // Delete Chat and merge's absorbed-source cleanup, which both need the
 // exact same list.
@@ -887,9 +895,7 @@ function toggleMediaGallery() {
 }
 
 // Shared by bookmark and media navigation - switches to the target chat
-// first if it isn't already open, then scrolls to the message once
-// Svelte's had a chance to process the null-then-set scroll target (a
-// longer delay when switching chats, to let the new chat's messages load).
+// first if it isn't already open, then scrolls to the specific message.
 async function navigateToMessageInChat(messageId: string, chatTitle: string) {
 	// Whichever global view triggered this (All Media, Bookmarks) has to
 	// close - it fully owns the screen while open, so just switching the
@@ -907,21 +913,30 @@ async function navigateToMessageInChat(messageId: string, chatTitle: string) {
 		appState.selectChat(chatIndex);
 	}
 
-	// No need to null-then-set scrollToMessageId here: closing the global
-	// view above always unmounts/remounts ChatView (it fully owns the
-	// screen while shown), so lastProcessedScrollId is already fresh on
-	// the new instance. Setting scrollToMessageId to null first used to
-	// leave a window where the freshly-mounted ChatView briefly observed
-	// scrollToMessageId as null, tricking its "scroll to bottom" guard
-	// into thinking no message-scroll was pending.
+	// Set the target BEFORE ChatView (re)mounts, not after. Closing the
+	// global view above (and switching chats, if needed) both happen
+	// synchronously, so setting this first means ChatView's very first
+	// mount-time effect run already observes the real scrollToMessageId
+	// instead of null/stale - no race. Setting it after an `await tick()`
+	// (as this used to do) left a window where ChatView mounted while
+	// scrollToMessageId was still null/stale, causing its "scroll to
+	// bottom" effect to queue a requestAnimationFrame bottom-jump on that
+	// wrong read; that rAF then fired regardless of what scrollToMessageId
+	// became afterward, racing scrollToMessageWithRetry's scroll and
+	// usually - but not reliably - losing. This was most visible with no
+	// chat switch (needsChatSwitch false): there was no extra delay before
+	// the old code set scrollToMessageId, so the odds of the stale mount-
+	// time read losing the race were highest.
+	scrollToMessageId = messageId;
 	await tick();
 
-	const delay = needsChatSwitch ? 300 : 0;
-	if (delay > 0) {
-		await new Promise((resolve) => setTimeout(resolve, delay));
+	if (needsChatSwitch) {
+		// Not required for correctness anymore (scrollToMessageWithRetry
+		// already retries until the new chat's messages/refs are ready) -
+		// kept as a brief pause so the chat-switch transition doesn't look
+		// jarring right before the scroll-to-message jump.
+		await new Promise((resolve) => setTimeout(resolve, 300));
 	}
-
-	scrollToMessageId = messageId;
 }
 
 async function handleNavigateToMediaMessage(messageId: string, chatTitle: string) {
@@ -2456,6 +2471,15 @@ async function handleForgotPin() {
 												<span>{m.lock_now_button()}</span>
 											</ListItemButton>
 										{/if}
+										<ListItemButton
+											onclick={() => {
+												showChatOptionsDropdown = false;
+												handleCloseChat();
+											}}
+										>
+											<Icon name="close" size="sm" />
+											<span>{m.chat_close()}</span>
+										</ListItemButton>
 									</DropdownList>
 								{/if}
 							</Dropdown>
@@ -2572,6 +2596,15 @@ async function handleForgotPin() {
 									<Icon name="lock" size="md" />
 								</IconButton>
 							{/if}
+							<IconButton
+								theme="dark"
+								size="md"
+								onclick={handleCloseChat}
+								title={m.chat_close()}
+								aria-label={m.chat_close()}
+							>
+								<Icon name="close" size="md" />
+							</IconButton>
 						</div>
 					</div>
 				</div>
@@ -2602,6 +2635,15 @@ async function handleForgotPin() {
 							{m.lock_header_badge()}
 						</span>
 					</div>
+					<IconButton
+						theme="dark"
+						size="md"
+						onclick={handleCloseChat}
+						title={m.chat_close()}
+						aria-label={m.chat_close()}
+					>
+						<Icon name="close" size="md" />
+					</IconButton>
 				</div>
 			{:else}
 				<!-- No chat selected - simplified header -->

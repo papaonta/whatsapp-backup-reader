@@ -7,6 +7,7 @@ import { getLocale } from '$lib/paraglide/runtime';
 import type { ChatMessage } from '$lib/parser';
 import { groupMessagesByDate } from '$lib/parser';
 import type { FlatItem } from '$lib/parser/zip-parser';
+import Icon from './Icon.svelte';
 import MessageBubble from './MessageBubble.svelte';
 
 // Get current locale for date formatting
@@ -234,6 +235,28 @@ let chatContainer: HTMLElement;
 let hasScrolledToBottom = $state(false);
 let isLoadingMore = $state(false);
 
+// Floating "scroll to bottom" button - shown once the user has scrolled far
+// enough up that the latest message isn't visible anymore.
+const SCROLL_TO_BOTTOM_THRESHOLD = 400;
+let showScrollToBottomButton = $state(false);
+
+function updateScrollToBottomVisibility() {
+	if (!chatContainer) return;
+	const distanceFromBottom =
+		chatContainer.scrollHeight -
+		chatContainer.scrollTop -
+		chatContainer.clientHeight;
+	showScrollToBottomButton = distanceFromBottom > SCROLL_TO_BOTTOM_THRESHOLD;
+}
+
+function scrollToBottom() {
+	if (!chatContainer) return;
+	chatContainer.scrollTo({
+		top: chatContainer.scrollHeight,
+		behavior: 'smooth',
+	});
+}
+
 // Action to register message refs
 function registerMessageRef(node: HTMLElement, messageId: string) {
 	messageRefs.set(messageId, node);
@@ -310,6 +333,7 @@ $effect(() => {
 	if (previousChatId !== null && previousChatId !== chatId) {
 		loadedChunksFromEnd = INITIAL_CHUNKS;
 		hasScrolledToBottom = false;
+		showScrollToBottomButton = false;
 		// DON'T clear messageRefs here - let the destroy() callbacks handle cleanup
 		// and the new elements will register themselves
 		lastProcessedScrollId = null; // Reset so bookmarks work after chat switch
@@ -579,6 +603,8 @@ let scrollTimeout: ReturnType<typeof setTimeout> | null = null;
 let isNavigationScroll = $state(false);
 
 function handleScroll() {
+	updateScrollToBottomVisibility();
+
 	if (!isNavigationScroll && persistentHighlightId && !pendingHighlightId) {
 		persistentHighlightId = null;
 	}
@@ -594,6 +620,7 @@ function handleScroll() {
 }
 </script>
 
+<div class="relative flex-1 flex flex-col overflow-hidden">
 <div
 	bind:this={chatContainer}
 	class="flex-1 overflow-y-auto p-4 chat-bg"
@@ -658,4 +685,17 @@ function handleScroll() {
 			<p>{m.messages_no_display()}</p>
 		</div>
 	{/if}
+</div>
+
+{#if showScrollToBottomButton}
+	<button
+		type="button"
+		class="absolute bottom-4 right-4 w-10 h-10 rounded-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 shadow-lg flex items-center justify-center text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-whatsapp-teal)]/60"
+		onclick={scrollToBottom}
+		aria-label={m.messages_scroll_to_bottom()}
+		title={m.messages_scroll_to_bottom()}
+	>
+		<Icon name="chevron-down" size="md" />
+	</button>
+{/if}
 </div>
