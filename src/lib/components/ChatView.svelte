@@ -285,7 +285,22 @@ function setupIntersectionObserver() {
 	observer = new IntersectionObserver(
 		(entries) => {
 			for (const entry of entries) {
-				if (entry.isIntersecting && renderedItems.hasMore && !isLoadingMore) {
+				// Skip while a navigation scroll (search result or go-to-
+				// message) is in flight: a freshly (re)mounted ChatView whose
+				// target isn't in the initial chunk window sits at
+				// scrollTop 0 while scrollToMessageWithRetry expands chunks
+				// and waits for refs - which puts topSentinel right in view,
+				// firing loadMoreMessages(). That function's own "preserve
+				// scroll position from the bottom" logic then stomps on the
+				// navigation scroll's target position once it lands,
+				// leaving the view somewhere between the two, nowhere near
+				// the intended message.
+				if (
+					entry.isIntersecting &&
+					renderedItems.hasMore &&
+					!isLoadingMore &&
+					!isNavigationScroll
+				) {
 					loadMoreMessages();
 				}
 			}
@@ -422,9 +437,16 @@ $effect(() => {
 		// Capture targetId at the start to detect if it changes during retries
 		const capturedTargetId = targetId;
 
+		// Set for the whole retry loop, not just the final scroll - see the
+		// identical comment in scrollToMessageWithRetry for why (chunk
+		// expansion below can otherwise leave the topSentinel triggering
+		// loadMoreMessages mid-navigation).
+		isNavigationScroll = true;
+
 		for (let attempt = 0; attempt < maxRetries; attempt++) {
 			// Check if currentSearchResultId changed during retry loop (race condition)
 			if (currentSearchResultId !== capturedTargetId) {
+				isNavigationScroll = false;
 				return; // Exit early, a newer navigation is in progress
 			}
 
@@ -439,6 +461,7 @@ $effect(() => {
 					loadedChunksFromEnd = chunksNeeded + 1;
 					// Check again before async operation
 					if (currentSearchResultId !== capturedTargetId) {
+						isNavigationScroll = false;
 						return;
 					}
 					await tick(); // Wait for DOM update after chunk expansion
@@ -453,12 +476,12 @@ $effect(() => {
 					highlightReady = false;
 					highlightedId = null;
 					pendingHighlightId = capturedTargetId;
-					isNavigationScroll = true;
 
 					element.scrollIntoView({ behavior: 'smooth', block: 'center' });
 
 					// Check again before async operation
 					if (currentSearchResultId !== capturedTargetId) {
+						isNavigationScroll = false;
 						return;
 					}
 
@@ -472,10 +495,12 @@ $effect(() => {
 
 			// Ref not ready yet, check again before waiting
 			if (currentSearchResultId !== capturedTargetId) {
+				isNavigationScroll = false;
 				return;
 			}
 			await new Promise((resolve) => setTimeout(resolve, retryDelay));
 		}
+		isNavigationScroll = false;
 	})();
 });
 
@@ -495,6 +520,15 @@ async function scrollToMessageWithRetry(targetId: string): Promise<boolean> {
 	const maxRetries = 30; // 30 * 50ms = 1.5 seconds max
 	const retryDelay = 50;
 
+	// Set for the whole retry loop, not just the final scroll - chunk
+	// expansion below can leave chatContainer sitting at scrollTop 0 for a
+	// bit (a freshly mounted ChatView with its target outside the initial
+	// chunk window hasn't scrolled anywhere yet), which puts topSentinel
+	// right in view and would otherwise trigger loadMoreMessages() mid-
+	// navigation - its own "preserve scroll position from the bottom"
+	// logic then stomps on whatever position this function lands on.
+	isNavigationScroll = true;
+
 	for (let attempt = 0; attempt < maxRetries; attempt++) {
 		// 1. Check if target exists in current chat's index
 		const messageIndex = messageIndexMap.get(targetId);
@@ -507,6 +541,7 @@ async function scrollToMessageWithRetry(targetId: string): Promise<boolean> {
 				await new Promise((resolve) => setTimeout(resolve, retryDelay));
 				continue;
 			}
+			isNavigationScroll = false;
 			return false;
 		}
 
@@ -528,7 +563,6 @@ async function scrollToMessageWithRetry(targetId: string): Promise<boolean> {
 				highlightReady = false;
 				highlightedId = null;
 				pendingHighlightId = targetId;
-				isNavigationScroll = true;
 
 				const elementRect = element.getBoundingClientRect();
 				const containerRect = chatContainer.getBoundingClientRect();
@@ -567,6 +601,7 @@ async function scrollToMessageWithRetry(targetId: string): Promise<boolean> {
 		'attempts for:',
 		targetId,
 	);
+	isNavigationScroll = false;
 	return false;
 }
 

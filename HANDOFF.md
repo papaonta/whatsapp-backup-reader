@@ -529,6 +529,75 @@ broken - it may just be another concurrent session's work, already safe.
     template wrapped in a `relative` div so the button can be absolutely
     positioned over the message list; state resets on chat change
     alongside `hasScrolledToBottom`.
+- **Go-to-message STILL broken for real (long) chats - a third scroll
+  mechanism was the actual remaining culprit (done):** user tested the fix
+  above and reported it got *worse*, not better, specifically for their
+  two real long chats (team marcomm, all star) - previously worked "on
+  condition" (switch chats first), now doesn't land anywhere sensible at
+  all, same for All Media. Confirmed short test chats still worked fine,
+  which is why this didn't surface earlier - the bug only manifests once
+  the target message is far enough back that `scrollToMessageWithRetry`
+  needs to expand `loadedChunksFromEnd` beyond the initial window.
+  - Reproduced with a synthetic 5000-message chat (`hugechat.zip`
+    pattern, not committed - see the two-step `node -e` fixture generator
+    in this round's conversation if it needs rebuilding: iOS bracket
+    format `[DD/MM/YYYY, HH:MM:SS AM/PM]` requires seconds or the whole
+    file silently parses as one giant unparsed message - discovered this
+    the hard way building the fixture). Added temporary debug logging to
+    trace the scroll math live rather than continuing to guess.
+  - Actual root cause: a **third** scroll-affecting mechanism no prior
+    round had accounted for - `topSentinel`'s `IntersectionObserver`
+    (drives "load more/older messages" when scrolled near the top).
+    ChatView's earlier fix correctly stops the "scroll to bottom on
+    mount" effect from firing when a message-target is pending, but that
+    leaves `chatContainer.scrollTop` at its default `0` while
+    `scrollToMessageWithRetry` expands chunks and waits for refs -
+    `scrollTop: 0` sits right in `topSentinel`'s trigger zone, firing
+    `loadMoreMessages()` *during* the navigation. That function's own
+    "preserve scroll position from the bottom" logic
+    (`scrollTop = scrollHeight - scrollBottom`) then fires in a separate
+    `requestAnimationFrame` and stomps on whatever position the
+    navigation scroll had just set, landing the view somewhere between
+    the two - explained by live-logged evidence:
+    `scrollHeight` grew from 30084 to 45061 *after* `scrollToMessage`
+    already logged "Success". Confirms the earlier "switch chats first
+    helped" observation was luck, not a real fix - the extra chat-switch
+    delay happened to let `loadMoreMessages`'s own scroll adjustment
+    settle *before* the message-scroll started, rather than during it;
+    once the previous round made `scrollToMessageId` land correctly on
+    the very first mount-time effect run (removing that accidental
+    delay), the topSentinel race started firing consistently instead of
+    intermittently.
+  - Fix: reuse the existing `isNavigationScroll` flag (already used
+    elsewhere to suppress persistent-highlight-clearing during a
+    navigation scroll) as the guard - added `!isNavigationScroll` to the
+    `IntersectionObserver` callback's condition before calling
+    `loadMoreMessages()`, and moved `isNavigationScroll = true` to the
+    *start* of `scrollToMessageWithRetry` (previously only set right
+    before the final `scrollTo()` call, i.e. *after* the vulnerable
+    chunk-expansion phase) with resets added on every early-return exit
+    path (message not found, target changed mid-retry, retries
+    exhausted) so it can't get stuck `true` forever. Applied the
+    identical fix to the parallel cross-chat-search scroll effect
+    (`currentSearchResultId`), which has the exact same chunk-expansion-
+    before-`isNavigationScroll` structure and would hit the same bug for
+    a search result deep in a long chat, even though it wasn't reported
+    yet.
+  - Verified live with the 5000-message fixture: target at index 4700
+    (shallow expansion) and index 50 (near-total expansion, ~50 chunks)
+    both land correctly, in both the no-switch and switch-chat-first
+    scenarios. Also re-verified the short-chat cases and the Close-chat/
+    scroll-to-bottom buttons from the round above still work unaffected.
+  - Lesson reinforced: when a user reports "this got worse instead of
+    better" after a scroll/timing fix, don't assume the previous
+    diagnosis was right and look for a smaller missed detail - a
+    *bigger* regression after a partial fix is often a sign a **separate,
+    previously-masked** mechanism is now exposed, not that the same fix
+    needs tuning. Reproducing with data at the *scale* the user actually
+    has (thousands of messages, not dozens) was what surfaced it - the
+    short example fixtures in `examples/chats/` never exercise chunk
+    expansion at all (all under 200 messages, fitting the initial
+    render window).
 
 ## Working conventions established across sessions (don't relitigate)
 
