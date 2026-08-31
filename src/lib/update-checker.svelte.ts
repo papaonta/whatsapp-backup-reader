@@ -13,8 +13,9 @@ const STORAGE_KEY_IGNORED_VERSION = 'update_ignored_version';
 
 // GitHub API endpoint for latest release
 const RELEASES_API_URL =
-	'https://api.github.com/repos/rodrigogs/whats-reader/releases/latest';
-const RELEASES_PAGE_URL = 'https://github.com/rodrigogs/whats-reader/releases';
+	'https://api.github.com/repos/papaonta/whatsapp-backup-reader/releases/latest';
+const RELEASES_PAGE_URL =
+	'https://github.com/papaonta/whatsapp-backup-reader/releases';
 
 // Current app version (injected at build time)
 export const currentVersion = `v${__APP_VERSION__}`;

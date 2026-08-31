@@ -513,7 +513,7 @@ ipcMain.handle('extraction:getStorageUsage', async () => {
 
 ipcMain.handle('shell:openExternal', async (_event, url) => {
 	// Validate URL before opening
-	if (!url.startsWith('https://github.com/rodrigogs/whats-reader')) {
+	if (!url.startsWith('https://github.com/papaonta/whatsapp-backup-reader')) {
 		throw new Error('Invalid URL');
 	}
 	await shell.openExternal(url);

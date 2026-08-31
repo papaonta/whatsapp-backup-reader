@@ -2075,14 +2075,14 @@ async function handleForgotPin() {
 				<div class="mt-6 flex flex-col items-center gap-1.5">
 					<span class="text-xs text-gray-400 dark:text-gray-500">{m.github_star_title()}</span>
 					<a
-						href="https://github.com/rodrigogs/whats-reader"
+						href="https://github.com/papaonta/whatsapp-backup-reader"
 						target="_blank"
 						rel="noopener noreferrer"
 						class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-gray-800 dark:bg-gray-700 hover:bg-gray-700 dark:hover:bg-gray-600 text-white rounded-md transition-colors text-xs font-medium"
 						onclick={(e) => {
 							if (isElectron && window.electronAPI?.openExternal) {
 								e.preventDefault();
-								window.electronAPI.openExternal('https://github.com/rodrigogs/whats-reader');
+								window.electronAPI.openExternal('https://github.com/papaonta/whatsapp-backup-reader');
 							}
 						}}
 					>

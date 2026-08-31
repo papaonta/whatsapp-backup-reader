@@ -9,10 +9,13 @@ import {
 	setAppLockSettings,
 	setDefaultIdentitySettings,
 } from '$lib/persistence.svelte';
+import { currentVersion } from '$lib/update-checker.svelte';
 import AppLockGate from './AppLockGate.svelte';
 import Button from './Button.svelte';
 import Icon from './Icon.svelte';
 import LocaleSwitcher from './LocaleSwitcher.svelte';
+
+const FORK_REPO_URL = 'https://github.com/papaonta/whatsapp-backup-reader';
 
 interface Props {
 	onBack: () => void;
@@ -319,6 +322,32 @@ async function handleDefaultIdentityChange(value: string) {
 					</div>
 					<div class="text-sm text-gray-500 dark:text-gray-400">{m.settings_storage_used()}</div>
 				</div>
+			</section>
+
+			<section>
+				<h3 class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2">
+					{m.settings_about_section()}
+				</h3>
+				<div class="text-sm text-gray-700 dark:text-gray-300 space-y-1">
+					<p>{m.settings_about_version({ version: currentVersion })}</p>
+					<p>{m.settings_about_fork_notice()}</p>
+					<p class="text-xs text-gray-500 dark:text-gray-400">{m.settings_about_original_credit()}</p>
+				</div>
+				<a
+					href={FORK_REPO_URL}
+					target="_blank"
+					rel="noopener noreferrer"
+					class="inline-flex items-center gap-1.5 mt-2 text-sm text-[var(--color-whatsapp-teal)] hover:underline cursor-pointer"
+					onclick={(e) => {
+						if (window.electronAPI?.isElectron && window.electronAPI?.openExternal) {
+							e.preventDefault();
+							window.electronAPI.openExternal(FORK_REPO_URL);
+						}
+					}}
+				>
+					<Icon name="github" size="sm" />
+					{m.settings_about_view_source()}
+				</a>
 			</section>
 		</div>
 	</div>

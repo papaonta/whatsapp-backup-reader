@@ -44,6 +44,8 @@
 
 ---
 
+> **This is an independent fork** of [rodrigogs/whats-reader](https://github.com/rodrigogs/whats-reader), maintained by [papaonta](https://github.com/papaonta). All credit for the original app goes to [Rodrigo Gomes da Silva](https://github.com/rodrigogs) and its contributors. This fork adds a WhatsApp-Desktop-style UI redesign and a handful of extra features on top; it is not affiliated with or endorsed by the upstream project. Released under the same [AGPL-3.0 license](LICENSE).
+
 ## What it does
 
 Drop a WhatsApp `.zip` export and browse your messages, photos, and voice notes. Works with big chats (tested with 10k+ messages).

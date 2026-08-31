@@ -5,16 +5,22 @@
 	"description": "A desktop app to read and visualize WhatsApp chat exports",
 	"license": "AGPL-3.0",
 	"author": {
-		"name": "Rodrigo Gomes da Silva",
-		"email": "rodrigo.smscom@gmail.com"
+		"name": "papaonta"
 	},
+	"contributors": [
+		{
+			"name": "Rodrigo Gomes da Silva",
+			"email": "rodrigo.smscom@gmail.com",
+			"url": "https://github.com/rodrigogs/whats-reader"
+		}
+	],
 	"repository": {
 		"type": "git",
-		"url": "https://github.com/rodrigogs/whats-reader.git"
+		"url": "https://github.com/papaonta/whatsapp-backup-reader.git"
 	},
-	"homepage": "https://github.com/rodrigogs/whats-reader#readme",
+	"homepage": "https://github.com/papaonta/whatsapp-backup-reader#readme",
 	"bugs": {
-		"url": "https://github.com/rodrigogs/whats-reader/issues"
+		"url": "https://github.com/papaonta/whatsapp-backup-reader/issues"
 	},
 	"type": "module",
 	"main": "electron/main.cjs",
@@ -85,8 +91,8 @@
 		"afterPack": "./scripts/afterPack.cjs",
 		"publish": {
 			"provider": "github",
-			"owner": "rodrigogs",
-			"repo": "whats-reader"
+			"owner": "papaonta",
+			"repo": "whatsapp-backup-reader"
 		},
 		"directories": {
 			"output": "dist-electron"
