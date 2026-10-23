@@ -1,3 +1,10 @@
+## [1.0.1](https://github.com/papaonta/whatsapp-backup-reader/compare/v1.0.0...v1.0.1) (2026-10-23)
+
+
+### Bug Fixes
+
+* patch high-severity vulnerabilities in electron-updater/js-yaml deps ([91a4c18](https://github.com/papaonta/whatsapp-backup-reader/commit/91a4c1809dc735eaa42e3073ede1caed0a456370)), closes [hi#severity](https://github.com/hi/issues/severity)
+
 # 1.0.0 (2026-08-31)
 
 
