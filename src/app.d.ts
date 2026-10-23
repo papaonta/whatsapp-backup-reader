@@ -6,28 +6,10 @@ interface FileResult {
 	name: string;
 }
 
-interface ReadResult {
-	success: boolean;
-	data?: ArrayBuffer;
-	error?: string;
-}
-
 interface FileReadResult {
 	success: boolean;
 	buffer?: ArrayBuffer;
 	name?: string;
-	error?: string;
-}
-
-interface DirEntry {
-	name: string;
-	isDirectory: boolean;
-	path: string;
-}
-
-interface ReadDirResult {
-	success: boolean;
-	data?: DirEntry[];
 	error?: string;
 }
 
@@ -75,8 +57,6 @@ interface MergedChatMediaEntry {
 interface ElectronAPI {
 	openFile: () => Promise<FileResult | null>;
 	openFolder: () => Promise<string | null>;
-	readFile: (filePath: string) => Promise<ReadResult>;
-	readDir: (dirPath: string) => Promise<ReadDirResult>;
 	fileExists: (filePath: string) => Promise<boolean>;
 	readFileFromPath: (filePath: string) => Promise<FileReadResult>;
 	openExternal: (url: string) => Promise<void>;

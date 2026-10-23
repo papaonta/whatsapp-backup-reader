@@ -8,8 +8,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
 	openFolder: () => ipcRenderer.invoke('dialog:openFolder'),
 
 	// File system operations
-	readFile: (filePath) => ipcRenderer.invoke('fs:readFile', filePath),
-	readDir: (dirPath) => ipcRenderer.invoke('fs:readDir', dirPath),
 	fileExists: (filePath) => ipcRenderer.invoke('fs:fileExists', filePath),
 
 	// Persistence file operations

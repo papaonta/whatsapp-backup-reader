@@ -47,7 +47,7 @@ const createWindow = () => {
 			preload: path.join(__dirname, 'preload.cjs'),
 			contextIsolation: true,
 			nodeIntegration: false,
-			sandbox: false,
+			sandbox: true,
 		},
 		titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
 		backgroundColor: '#ECE5DD',
@@ -249,31 +249,6 @@ ipcMain.handle('dialog:openFolder', async () => {
 	}
 
 	return result.filePaths[0];
-});
-
-ipcMain.handle('fs:readFile', async (_event, filePath) => {
-	try {
-		const content = fs.readFileSync(filePath);
-		return { success: true, data: content.buffer };
-	} catch (error) {
-		return { success: false, error: error.message };
-	}
-});
-
-ipcMain.handle('fs:readDir', async (_event, dirPath) => {
-	try {
-		const files = fs.readdirSync(dirPath, { withFileTypes: true });
-		return {
-			success: true,
-			data: files.map((f) => ({
-				name: f.name,
-				isDirectory: f.isDirectory(),
-				path: path.join(dirPath, f.name),
-			})),
-		};
-	} catch (error) {
-		return { success: false, error: error.message };
-	}
 });
 
 ipcMain.handle('fs:fileExists', async (_event, filePath) => {
