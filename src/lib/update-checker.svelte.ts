@@ -1,3 +1,4 @@
+import * as m from '$lib/paraglide/messages';
 /**
  * Update checker service for WhatsApp Backup Reader
  *
@@ -195,7 +196,7 @@ export async function checkForUpdates(): Promise<boolean> {
 		// Silently fail - don't bother user with network errors
 		console.debug('Update check failed:', error);
 		_checkError =
-			error instanceof Error ? error.message : 'Failed to check for updates';
+			error instanceof Error ? error.message : m.update_check_failed();
 		_isChecking = false;
 		return false;
 	}

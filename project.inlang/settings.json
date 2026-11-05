@@ -3,15 +3,7 @@
   "baseLocale": "en",
   "locales": [
     "en",
-    "pt",
-    "es",
-    "fr",
-    "de",
-    "it",
-    "nl",
-    "ja",
-    "zh",
-    "ru"
+    "id"
   ],
   "modules": [
     "./node_modules/@inlang/plugin-message-format/dist/index.js",

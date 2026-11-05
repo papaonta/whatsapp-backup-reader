@@ -1,3 +1,4 @@
+import * as m from '$lib/paraglide/messages';
 /**
  * Persistent Conversation Storage
  * Allows users to save chat sessions across app restarts without storing large ZIP files.
@@ -452,7 +453,7 @@ export async function restoreChat(
 	needsReselect?: boolean;
 }> {
 	if (!browser)
-		return { success: false, error: 'Restoration only available in browser' };
+		return { success: false, error: m.persistence_err_browser_only() };
 
 	const { fileReference } = persistedChat;
 
@@ -491,7 +492,7 @@ export async function restoreChat(
 			if (!originalExists) {
 				return {
 					success: false,
-					error: 'Extraction folder not found and original file is gone',
+					error: m.persistence_err_extraction_missing(),
 					needsReselect: true,
 				};
 			}
@@ -503,7 +504,7 @@ export async function restoreChat(
 			if (!extractResult.success || !extractResult.entries) {
 				return {
 					success: false,
-					error: extractResult.error || 'Failed to re-extract',
+					error: extractResult.error || m.persistence_err_reextract_failed(),
 					needsReselect: true,
 				};
 			}
@@ -537,7 +538,7 @@ export async function restoreChat(
 			if (!exists) {
 				return {
 					success: false,
-					error: 'File not found at saved path',
+					error: m.persistence_err_file_not_found(),
 					needsReselect: true,
 				};
 			}
@@ -549,7 +550,7 @@ export async function restoreChat(
 			if (!result.success || !result.buffer) {
 				return {
 					success: false,
-					error: result.error || 'Failed to read file',
+					error: result.error || m.persistence_err_read_failed(),
 					needsReselect: true,
 				};
 			}
@@ -570,7 +571,7 @@ export async function restoreChat(
 			if (!handle) {
 				return {
 					success: false,
-					error: 'File handle not found',
+					error: m.persistence_err_handle_not_found(),
 					needsReselect: true,
 				};
 			}
@@ -580,7 +581,7 @@ export async function restoreChat(
 			if (permission !== 'granted') {
 				return {
 					success: false,
-					error: 'File permission denied',
+					error: m.persistence_err_permission_denied(),
 					needsReselect: true,
 				};
 			}
@@ -601,7 +602,7 @@ export async function restoreChat(
 				console.error('Failed to read file from handle:', e);
 				return {
 					success: false,
-					error: 'Failed to read file from handle',
+					error: m.persistence_err_handle_read_failed(),
 					needsReselect: true,
 				};
 			}
@@ -625,12 +626,12 @@ export async function restoreChat(
 			};
 		}
 
-		return { success: false, error: 'Unknown file reference type' };
+		return { success: false, error: m.persistence_err_unknown_ref() };
 	} catch (e) {
 		console.error('Failed to restore chat:', e);
 		return {
 			success: false,
-			error: e instanceof Error ? e.message : 'Unknown error',
+			error: e instanceof Error ? e.message : m.persistence_err_unknown(),
 		};
 	}
 }

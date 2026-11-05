@@ -2,6 +2,7 @@
 import type { Snippet } from 'svelte';
 import { browser } from '$app/environment';
 import { floating } from '$lib/actions/floating';
+import * as m from '$lib/paraglide/messages';
 
 interface Props {
 	/**
@@ -67,7 +68,7 @@ let {
 	offsetDistance = 8,
 	width = 'w-64',
 	class: className = '',
-	closeAriaLabel = 'Close dropdown',
+	closeAriaLabel = m.close_dropdown(),
 	children,
 }: Props = $props();
 

@@ -1,3 +1,4 @@
+import * as m from '$lib/paraglide/messages';
 /**
  * Auto-Updater Service (Electron only)
  * Uses electron-updater for automatic update downloads and installation
@@ -75,7 +76,7 @@ function handleUpdateStatus(status: { event: string; data?: unknown }) {
 
 		case 'error': {
 			const data = status.data as { message?: string } | undefined;
-			errorMessage = data?.message || 'Update check failed';
+			errorMessage = data?.message || m.update_check_failed();
 			break;
 		}
 
@@ -104,7 +105,7 @@ export async function downloadUpdate() {
 		await window.electronAPI.updater.downloadUpdate();
 	} catch (err) {
 		console.error('Failed to download update:', err);
-		errorMessage = 'Failed to download update';
+		errorMessage = m.update_download_failed();
 	}
 }
 
@@ -118,7 +119,7 @@ export function installUpdate() {
 		window.electronAPI.updater.quitAndInstall();
 	} catch (err) {
 		console.error('Failed to install update:', err);
-		errorMessage = 'Failed to install update';
+		errorMessage = m.update_install_failed();
 	}
 }
 

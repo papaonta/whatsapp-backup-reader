@@ -1,3 +1,4 @@
+import * as m from '$lib/paraglide/messages';
 /**
  * Audio Transcription Service using Whisper via Transformers.js
  * Runs in a Web Worker to keep UI responsive
@@ -64,7 +65,7 @@ function initWorker(): Worker {
 						transcriptionStore.set(message.messageId, message.text);
 						transcriptionStore = new Map(transcriptionStore);
 					}
-					pending.resolve(message.text || '(No speech detected)');
+					pending.resolve(message.text || m.transcription_no_speech());
 					pendingTranscriptions.delete(message.messageId);
 				}
 				break;
@@ -123,6 +124,7 @@ export function getAvailableLanguages(): { code: string; name: string }[] {
 	return [
 		{ code: 'portuguese', name: 'Português' },
 		{ code: 'english', name: 'English' },
+		{ code: 'indonesian', name: 'Bahasa Indonesia' },
 		{ code: 'spanish', name: 'Español' },
 		{ code: 'french', name: 'Français' },
 		{ code: 'german', name: 'Deutsch' },
@@ -132,7 +134,7 @@ export function getAvailableLanguages(): { code: string; name: string }[] {
 		{ code: 'chinese', name: '中文' },
 		{ code: 'korean', name: '한국어' },
 		{ code: 'russian', name: 'Русский' },
-		{ code: 'auto', name: 'Auto-detect' },
+		{ code: 'auto', name: m.language_auto() },
 	];
 }
 
@@ -292,7 +294,9 @@ export async function transcribeAudio(
 		});
 	} catch (e) {
 		console.error('Failed to decode audio:', e);
-		throw new Error(e instanceof Error ? e.message : 'Failed to decode audio');
+		throw new Error(
+			e instanceof Error ? e.message : m.transcription_decode_failed(),
+		);
 	}
 }
 

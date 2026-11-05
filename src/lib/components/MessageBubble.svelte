@@ -338,7 +338,7 @@ async function loadMedia() {
 	try {
 		mediaUrl = await loadMediaFile(message.mediaFile);
 	} catch (e) {
-		mediaError = e instanceof Error ? e.message : 'Failed to load media';
+		mediaError = e instanceof Error ? e.message : m.media_gallery_load_error();
 	} finally {
 		mediaLoading = false;
 	}
@@ -352,11 +352,11 @@ async function transcribeVoiceMessage() {
 
 	try {
 		const text = await transcribeAudio(mediaUrl, message.id);
-		transcription = text || '(No speech detected)';
+		transcription = text || m.transcription_no_speech();
 		showTranscription = true;
 	} catch (e) {
 		transcriptionError =
-			e instanceof Error ? e.message : 'Transcription failed';
+			e instanceof Error ? e.message : m.transcription_failed();
 	} finally {
 		transcriptionLoading = false;
 	}
@@ -425,7 +425,7 @@ async function transcribeVoiceMessage() {
 						{#if message.mediaType === 'image' || message.mediaType === 'sticker'}
 							<img 
 								src={mediaUrl} 
-								alt="{message.mediaFile?.name || 'Media attachment'}" 
+								alt="{message.mediaFile?.name || m.media_attachment()}" 
 								class="max-w-full rounded-lg mb-1 cursor-pointer"
 								style="max-height: 300px;"
 								loading="lazy"
@@ -455,9 +455,9 @@ async function transcribeVoiceMessage() {
 												<div class="flex items-center justify-between mb-1">
 													<span class="text-xs font-medium text-gray-500 dark:text-gray-400 flex items-center gap-1">
 													<Icon name="document" size="xs" />
-														Transcription
+														{m.transcription_title()}
 														{#if transcriptionMatchesSearch}
-															<span class="text-[var(--color-whatsapp-teal)] text-[10px]">(match)</span>
+															<span class="text-[var(--color-whatsapp-teal)] text-[10px]">{m.transcription_match()}</span>
 														{/if}
 													</span>
 													<button
@@ -533,14 +533,14 @@ async function transcribeVoiceMessage() {
 								class="flex items-center gap-2 text-[var(--color-whatsapp-teal)] hover:underline"
 							>
 								<Icon name="download" size="md" />
-								<span class="text-sm">{message.mediaFile?.name || 'Download'}</span>
+								<span class="text-sm">{message.mediaFile?.name || m.media_download()}</span>
 							</a>
 						{/if}
 					{:else if mediaLoading}
 						<!-- Loading state -->
 						<div class="flex items-center gap-2 text-gray-500 dark:text-gray-400 py-2">
 							<div class="animate-spin rounded-full h-5 w-5 border-2 border-gray-300 border-t-[var(--color-whatsapp-teal)]"></div>
-							<span class="text-sm">Loading...</span>
+							<span class="text-sm">{m.media_loading()}</span>
 						</div>
 					{:else if mediaError}
 						<!-- Error state -->

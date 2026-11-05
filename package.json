@@ -127,8 +127,7 @@
 		"electronLanguages": [
 			"en",
 			"en-US",
-			"pt",
-			"pt-BR"
+			"id"
 		],
 		"mac": {
 			"category": "public.app-category.utilities",

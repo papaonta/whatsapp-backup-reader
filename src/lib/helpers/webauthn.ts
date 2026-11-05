@@ -1,3 +1,4 @@
+import * as m from '$lib/paraglide/messages';
 /**
  * Biometric unlock (Windows Hello / Touch ID / device biometrics) via the
  * WebAuthn platform authenticator — a supplementary fast-path on top of the
@@ -40,7 +41,7 @@ export async function isPlatformAuthenticatorAvailable(): Promise<boolean> {
 }
 
 export function getBiometricLabel(): string {
-	if (typeof window === 'undefined') return 'device biometrics';
+	if (typeof window === 'undefined') return m.biometric_generic_label();
 
 	const electronPlatform = (
 		window as Window & { electronAPI?: { platform?: string } }
@@ -51,7 +52,7 @@ export function getBiometricLabel(): string {
 
 	if (/Mac|iPhone|iPad|iPod|darwin/i.test(platformString)) return 'Touch ID';
 	if (/Win/i.test(platformString)) return 'Windows Hello';
-	return 'device biometrics';
+	return m.biometric_generic_label();
 }
 
 export async function registerBiometric(
