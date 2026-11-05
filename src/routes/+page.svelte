@@ -730,6 +730,12 @@ async function handleFilesSelected(
 				// Persist this chat automatically so it survives an app restart
 				await persistChat(chatData.title);
 
+				// An Update replaced this chat's old record - drop its stale
+				// "tap to reopen" placeholder, if it had one.
+				chatsNeedingReselect = chatsNeedingReselect.filter(
+					(c) => c.chatTitle !== chatData.title,
+				);
+
 				// Start background indexing
 				startIndexWorker(chatData);
 
@@ -1928,7 +1934,27 @@ async function persistChat(chatTitle: string) {
 		// Use handle captured during drag-drop (no file picker needed)
 		const fileHandle = fileRef?.fileHandle;
 
-		const bookmarks = bookmarksState.getBookmarksForChat(chatTitle);
+		// An Update/re-import replaces an older saved record of this same chat.
+		// If that chat wasn't restored this session (e.g. its storage folder
+		// was unavailable), its starred messages and transcriptions exist only
+		// in the old record - load them into memory first, so they are saved
+		// into the new record and not overwritten by the bookmark-sync effect.
+		const previous = await findPersistedChatByTitle(chatTitle);
+		if (previous && validateRestoredFile(chat, previous).valid) {
+			if (previous.bookmarks?.length) {
+				bookmarksState.importBookmarks({
+					version: 1,
+					exportedAt: previous.savedAt,
+					bookmarks: previous.bookmarks,
+				});
+			}
+			if (Object.keys(previous.transcriptions ?? {}).length > 0) {
+				setTranscriptionsForChat(previous.transcriptions);
+			}
+		}
+
+		// $state.snapshot: reactive proxies can't be structured-cloned into IndexedDB
+		const bookmarks = $state.snapshot(bookmarksState.getBookmarksForChat(chatTitle));
 		const chatMessageIds = chat.messages.map((msg) => msg.id);
 		const transcriptions = getTranscriptionsForChat(chatMessageIds);
 

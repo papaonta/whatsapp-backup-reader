@@ -201,14 +201,18 @@ export async function savePersistedChat(
 	// different one, which would otherwise silently destroy its data). This is
 	// a defense-in-depth backstop; the primary guard is resolveUniqueChatTitle
 	// at import time in +page.svelte.
-	const existing = await findPersistedChatByTitle(chat.title);
-	if (existing && validateRestoredFile(chat, existing).valid) {
+	const found = await findPersistedChatByTitle(chat.title);
+	const replaced =
+		found && validateRestoredFile(chat, found).valid ? found : null;
+	if (replaced) {
 		// Carry over what only the old record knows about (starred messages and
 		// transcriptions of a chat that wasn't restored this session aren't in
 		// the in-memory state passed in), so an Update/re-import never drops them.
-		bookmarks = mergeBookmarks(existing.bookmarks ?? [], bookmarks);
-		transcriptions = { ...(existing.transcriptions ?? {}), ...transcriptions };
-		await removePersistedChat(existing.id);
+		bookmarks = mergeBookmarks(replaced.bookmarks ?? [], bookmarks);
+		transcriptions = {
+			...(replaced.transcriptions ?? {}),
+			...transcriptions,
+		};
 	}
 
 	// Generate unique ID
@@ -270,6 +274,20 @@ export async function savePersistedChat(
 
 	// Save metadata
 	await set(`${PERSISTENCE_PREFIX}${id}`, metadata);
+
+	// Only now that the new record is safely written, drop the one it
+	// replaces - a failed save must never cost the old record. If both point
+	// at the same extraction folder, only the record goes (never the folder).
+	if (replaced) {
+		const sameFolder =
+			replaced.fileReference.type === 'electron-extracted' &&
+			extraction?.extractionId === replaced.fileReference.extractionId;
+		if (sameFolder) {
+			await del(`${PERSISTENCE_PREFIX}${replaced.id}`);
+		} else {
+			await removePersistedChat(replaced.id);
+		}
+	}
 
 	// Request persistent storage
 	await requestPersistentStorage();
