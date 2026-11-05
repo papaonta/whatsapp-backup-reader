@@ -71,7 +71,12 @@ async function main() {
 	let vite;
 	if (!(await isUp())) {
 		console.log('Starting the dev server...');
-		vite = spawn('npm', ['run', 'dev'], { cwd: root, env, stdio: 'ignore' });
+		// Run vite directly (not via `npm run dev`) so killing it really stops the server.
+		vite = spawn(process.execPath, [require.resolve('vite/bin/vite.js'), 'dev'], {
+			cwd: root,
+			env,
+			stdio: 'ignore',
+		});
 		const started = Date.now();
 		while (!(await isUp())) {
 			if (Date.now() - started > 60000) {
