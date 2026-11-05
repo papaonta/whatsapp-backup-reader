@@ -166,6 +166,16 @@ async function requestPersistentStorage(): Promise<boolean> {
 }
 
 /**
+ * Union of two bookmark lists by id - entries in `incoming` win on conflict.
+ */
+function mergeBookmarks(old: Bookmark[], incoming: Bookmark[]): Bookmark[] {
+	const byId = new Map<string, Bookmark>();
+	for (const bookmark of old) byId.set(bookmark.id, bookmark);
+	for (const bookmark of incoming) byId.set(bookmark.id, bookmark);
+	return [...byId.values()];
+}
+
+/**
  * Save a persisted chat
  */
 export async function savePersistedChat(
@@ -193,6 +203,11 @@ export async function savePersistedChat(
 	// at import time in +page.svelte.
 	const existing = await findPersistedChatByTitle(chat.title);
 	if (existing && validateRestoredFile(chat, existing).valid) {
+		// Carry over what only the old record knows about (starred messages and
+		// transcriptions of a chat that wasn't restored this session aren't in
+		// the in-memory state passed in), so an Update/re-import never drops them.
+		bookmarks = mergeBookmarks(existing.bookmarks ?? [], bookmarks);
+		transcriptions = { ...(existing.transcriptions ?? {}), ...transcriptions };
 		await removePersistedChat(existing.id);
 	}
 
@@ -269,24 +284,7 @@ export async function getPersistedChats(): Promise<PersistedChatMetadata[]> {
 	if (!browser) return [];
 
 	try {
-		const allKeys = await keys();
-		const chatKeys = allKeys.filter(
-			(key) => typeof key === 'string' && key.startsWith(PERSISTENCE_PREFIX),
-		);
-
-		const chats: PersistedChatMetadata[] = [];
-		for (const key of chatKeys) {
-			const metadata = await get<PersistedChatMetadata>(key as string);
-			if (metadata) {
-				chats.push(metadata);
-			}
-		}
-
-		// Sort by updatedAt (most recent first)
-		return chats.sort(
-			(a, b) =>
-				new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
-		);
+		return await getPersistedChatsStrict();
 	} catch (e) {
 		console.error('Failed to get persisted chats:', e);
 		return [];
@@ -294,36 +292,75 @@ export async function getPersistedChats(): Promise<PersistedChatMetadata[]> {
 }
 
 /**
- * Remove a persisted chat
+ * Same as getPersistedChats but throws if storage can't be read, instead of
+ * returning an empty list. Use it wherever "no chats" and "couldn't read the
+ * chats" must not be confused (e.g. deciding which folders are orphaned).
  */
-export async function removePersistedChat(id: string): Promise<void> {
-	if (!browser) return;
+export async function getPersistedChatsStrict(): Promise<
+	PersistedChatMetadata[]
+> {
+	if (!browser) throw new Error('Persistence only available in browser');
+
+	const allKeys = await keys();
+	const chatKeys = allKeys.filter(
+		(key) => typeof key === 'string' && key.startsWith(PERSISTENCE_PREFIX),
+	);
+
+	const chats: PersistedChatMetadata[] = [];
+	for (const key of chatKeys) {
+		const metadata = await get<PersistedChatMetadata>(key as string);
+		if (metadata) {
+			chats.push(metadata);
+		}
+	}
+
+	// Sort by updatedAt (most recent first)
+	return chats.sort(
+		(a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
+	);
+}
+
+/**
+ * Remove a persisted chat. For an Electron-extracted chat the extraction
+ * folder is deleted first; if the extraction root can't be read (e.g. its
+ * drive is locked or unplugged) NOTHING is removed - not the folder and not
+ * the record (starred messages, transcriptions) - and `false` is returned.
+ * Every "delete this persisted chat" call site funnels through here.
+ *
+ * @returns true if the record was removed, false if it was left untouched
+ */
+export async function removePersistedChat(id: string): Promise<boolean> {
+	if (!browser) return false;
 
 	try {
 		const metadata = await get<PersistedChatMetadata>(
 			`${PERSISTENCE_PREFIX}${id}`,
 		);
-		await del(`${PERSISTENCE_PREFIX}${id}`);
-		// Remove associated file handle if this was a file-handle reference
-		if (metadata?.fileReference.type === 'file-handle') {
-			await del(`${HANDLE_PREFIX}${metadata.fileReference.handleId}`);
-		}
-		// Delete the on-disk extraction folder if this was an
-		// electron-extracted reference - every "delete this persisted chat"
-		// call site funnels through here, so this alone covers all of them.
 		if (
 			metadata?.fileReference.type === 'electron-extracted' &&
 			window.electronAPI?.isElectron &&
 			window.electronAPI.extraction
 		) {
-			await window.electronAPI.extraction
-				.deleteDir(metadata.fileReference.extractionDir)
-				.catch((e) => {
-					console.error('Failed to delete extraction folder:', e);
-				});
+			const result = await window.electronAPI.extraction.deleteDir(
+				metadata.fileReference.extractionId,
+			);
+			if (!result.success) {
+				console.error(
+					'Extraction folder not deleted, keeping the saved chat:',
+					result.error ?? 'storage unavailable',
+				);
+				return false;
+			}
 		}
+		await del(`${PERSISTENCE_PREFIX}${id}`);
+		// Remove associated file handle if this was a file-handle reference
+		if (metadata?.fileReference.type === 'file-handle') {
+			await del(`${HANDLE_PREFIX}${metadata.fileReference.handleId}`);
+		}
+		return true;
 	} catch (e) {
 		console.error('Failed to remove persisted chat:', e);
+		return false;
 	}
 }
 
@@ -451,6 +488,9 @@ export async function restoreChat(
 	};
 	error?: string;
 	needsReselect?: boolean;
+	// Set for electron-extracted chats whose extraction folder couldn't be
+	// read - see restoreChat's comment on why nothing is done automatically.
+	archiveUnavailable?: boolean;
 }> {
 	if (!browser)
 		return { success: false, error: m.persistence_err_browser_only() };
@@ -465,17 +505,20 @@ export async function restoreChat(
 				return { success: false, needsReselect: true };
 			}
 
+			// The folder is resolved by the main process from extractionId +
+			// the current extraction root; the (possibly stale) absolute path
+			// stored in the record is ignored and never rewritten.
 			const manifest = await window.electronAPI.extraction.loadManifest(
-				fileReference.extractionDir,
+				fileReference.extractionId,
 			);
-			if (manifest.success && manifest.entries) {
+			if (manifest.success && manifest.entries && manifest.extractionDir) {
 				return {
 					success: true,
 					data: {
 						name: manifest.originalFileName || persistedChat.fileName,
 						metadata: persistedChat,
 						extracted: {
-							extractionDir: fileReference.extractionDir,
+							extractionDir: manifest.extractionDir,
 							extractionId: fileReference.extractionId,
 							originalFileName: manifest.originalFileName,
 							entries: manifest.entries,
@@ -484,43 +527,16 @@ export async function restoreChat(
 				};
 			}
 
-			// Extraction folder is gone (e.g. app data was cleared) - fall back
-			// to re-extracting from the original zip path before giving up.
-			const originalExists = fileReference.originalFilePath
-				? await window.electronAPI.fileExists(fileReference.originalFilePath)
-				: false;
-			if (!originalExists) {
-				return {
-					success: false,
-					error: m.persistence_err_extraction_missing(),
-					needsReselect: true,
-				};
-			}
-
-			const extractResult = await window.electronAPI.extraction.extract(
-				fileReference.originalFilePath,
-				fileReference.extractionId,
-			);
-			if (!extractResult.success || !extractResult.entries) {
-				return {
-					success: false,
-					error: extractResult.error || m.persistence_err_reextract_failed(),
-					needsReselect: true,
-				};
-			}
-
+			// Folder not readable (deleted, or its drive is locked/unplugged).
+			// When in doubt, do nothing: no re-extraction, no deletion, no
+			// writes. The chat stays listed; the user can re-extract manually
+			// (with a size estimate and confirmation) once the folder is known
+			// to be gone for good.
 			return {
-				success: true,
-				data: {
-					name: extractResult.originalFileName || persistedChat.fileName,
-					metadata: persistedChat,
-					extracted: {
-						extractionDir: fileReference.extractionDir,
-						extractionId: fileReference.extractionId,
-						originalFileName: extractResult.originalFileName,
-						entries: extractResult.entries,
-					},
-				},
+				success: false,
+				error: m.persistence_err_extraction_missing(),
+				needsReselect: true,
+				archiveUnavailable: true,
 			};
 		}
 

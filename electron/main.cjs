@@ -18,7 +18,8 @@ const {
 	peekChatEntry,
 	loadManifest: loadExtractionManifest,
 	deleteExtractionDir,
-	pruneOrphans: pruneOrphanedExtractions,
+	listOrphans: listOrphanedExtractions,
+	deleteOrphans: deleteOrphanedExtractions,
 	getDirectorySize,
 	resolveMediaFilePath,
 	buildMediaFileResponse,
@@ -298,6 +299,18 @@ ipcMain.handle('fs:fileExists', async (_event, filePath) => {
 	return fs.existsSync(filePath);
 });
 
+// Size in bytes of a file, or null if it can't be read - used to show an
+// estimate before a manual re-extraction.
+ipcMain.handle('fs:fileSize', async (_event, filePath) => {
+	try {
+		if (typeof filePath !== 'string' || !path.isAbsolute(filePath)) return null;
+		const stat = await fs.promises.stat(filePath);
+		return stat.isFile() ? stat.size : null;
+	} catch {
+		return null;
+	}
+});
+
 // Validates a user-facing absolute path to a .zip file: rejects non-strings,
 // relative paths, traversal segments, non-.zip extensions, and symlinks.
 // Shared by every IPC handler that reads a zip file directly from disk.
@@ -469,17 +482,53 @@ ipcMain.handle(
 	},
 );
 
-ipcMain.handle('extraction:loadManifest', async (_event, extractionDir) => {
+// The extraction folder is always resolved from the extractionId and the
+// current extraction root (never from a path stored in a persisted record).
+// A manifest that can't be read is reported as `unavailable` and nothing is
+// created, re-extracted or deleted as a result - the renderer decides what
+// (if anything) to offer, and only after the user confirms.
+ipcMain.handle('extraction:loadManifest', async (_event, extractionId) => {
 	try {
-		if (typeof extractionDir !== 'string') {
-			throw new Error('Invalid extraction directory');
+		const result = await loadExtractionManifest(
+			getExtractionRoot(app),
+			extractionId,
+		);
+		return { success: true, ...result };
+	} catch (error) {
+		return {
+			success: false,
+			unavailable: true,
+			error: error instanceof Error ? error.message : String(error),
+		};
+	}
+});
+
+ipcMain.handle('extraction:deleteDir', async (_event, extractionId) => {
+	try {
+		const result = await deleteExtractionDir(
+			getExtractionRoot(app),
+			extractionId,
+		);
+		return { success: !result.unavailable, ...result };
+	} catch (error) {
+		return {
+			success: false,
+			error: error instanceof Error ? error.message : String(error),
+		};
+	}
+});
+
+// Orphan cleanup is manual only (Settings → Storage): list first, delete only
+// what the user confirmed. Nothing here runs automatically at launch.
+ipcMain.handle('extraction:listOrphans', async (_event, keepExtractionIds) => {
+	try {
+		if (!Array.isArray(keepExtractionIds)) {
+			throw new Error('Invalid keep list');
 		}
-		const resolved = path.resolve(extractionDir);
-		const root = getExtractionRoot(app);
-		if (resolved !== root && !resolved.startsWith(root + path.sep)) {
-			throw new Error('Path escapes extraction root');
-		}
-		const result = await loadExtractionManifest(resolved);
+		const result = await listOrphanedExtractions(
+			getExtractionRoot(app),
+			keepExtractionIds,
+		);
 		return { success: true, ...result };
 	} catch (error) {
 		return {
@@ -489,33 +538,27 @@ ipcMain.handle('extraction:loadManifest', async (_event, extractionDir) => {
 	}
 });
 
-ipcMain.handle('extraction:deleteDir', async (_event, extractionDir) => {
-	try {
-		if (typeof extractionDir !== 'string') {
-			throw new Error('Invalid extraction directory');
+ipcMain.handle(
+	'extraction:deleteOrphans',
+	async (_event, ids, keepExtractionIds) => {
+		try {
+			if (!Array.isArray(ids) || !Array.isArray(keepExtractionIds)) {
+				throw new Error('Invalid arguments');
+			}
+			const result = await deleteOrphanedExtractions(
+				getExtractionRoot(app),
+				ids,
+				keepExtractionIds,
+			);
+			return { success: true, ...result };
+		} catch (error) {
+			return {
+				success: false,
+				error: error instanceof Error ? error.message : String(error),
+			};
 		}
-		await deleteExtractionDir(getExtractionRoot(app), extractionDir);
-		return { success: true };
-	} catch (error) {
-		return {
-			success: false,
-			error: error instanceof Error ? error.message : String(error),
-		};
-	}
-});
-
-ipcMain.handle('extraction:pruneOrphans', async (_event, keepExtractionIds) => {
-	try {
-		const ids = Array.isArray(keepExtractionIds) ? keepExtractionIds : [];
-		const result = await pruneOrphanedExtractions(getExtractionRoot(app), ids);
-		return { success: true, ...result };
-	} catch (error) {
-		return {
-			success: false,
-			error: error instanceof Error ? error.message : String(error),
-		};
-	}
-});
+	},
+);
 
 ipcMain.handle('extraction:getStorageUsage', async () => {
 	try {

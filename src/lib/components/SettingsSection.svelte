@@ -6,6 +6,7 @@ import * as m from '$lib/paraglide/messages';
 import {
 	clearLockPin,
 	getLockPin,
+	getPersistedChatsStrict,
 	setAppLockSettings,
 	setDefaultIdentitySettings,
 } from '$lib/persistence.svelte';
@@ -33,6 +34,82 @@ let pendingEnableAfterSetup = $state(false);
 
 let storageBytes = $state<number | null>(null);
 let storageError = $state(false);
+
+// Manual orphan-folder cleanup (Electron only). Nothing is ever deleted
+// automatically: list first, then delete only after an explicit confirmation,
+// and only if the saved chat list was read successfully.
+const orphansApi = window.electronAPI?.isElectron
+	? window.electronAPI.extraction
+	: undefined;
+let orphanStatus = $state<
+	| 'idle'
+	| 'checking'
+	| 'none'
+	| 'found'
+	| 'unavailable'
+	| 'read-failed'
+	| 'deleted'
+>('idle');
+let orphanList = $state<{ id: string; bytes: number }[]>([]);
+let orphanConfirming = $state(false);
+let orphanDeletedCount = $state(0);
+const orphanTotalBytes = $derived(
+	orphanList.reduce((sum, o) => sum + o.bytes, 0),
+);
+
+async function checkOrphans() {
+	if (!orphansApi) return;
+	orphanStatus = 'checking';
+	orphanConfirming = false;
+	let keepIds: string[];
+	try {
+		const persisted = await getPersistedChatsStrict();
+		keepIds = persisted
+			.filter((p) => p.fileReference.type === 'electron-extracted')
+			.map((p) => (p.fileReference as { extractionId: string }).extractionId);
+	} catch {
+		orphanStatus = 'read-failed';
+		return;
+	}
+	const result = await orphansApi.listOrphans(keepIds);
+	if (!result.success || result.unavailable) {
+		orphanStatus = 'unavailable';
+		return;
+	}
+	orphanList = result.orphans ?? [];
+	orphanStatus = orphanList.length === 0 ? 'none' : 'found';
+}
+
+async function deleteOrphans() {
+	if (!orphansApi) return;
+	// Re-read the chat list right before deleting; abort on any doubt.
+	let keepIds: string[];
+	try {
+		const persisted = await getPersistedChatsStrict();
+		keepIds = persisted
+			.filter((p) => p.fileReference.type === 'electron-extracted')
+			.map((p) => (p.fileReference as { extractionId: string }).extractionId);
+	} catch {
+		orphanStatus = 'read-failed';
+		orphanConfirming = false;
+		return;
+	}
+	const result = await orphansApi.deleteOrphans(
+		orphanList.map((o) => o.id),
+		keepIds,
+	);
+	orphanConfirming = false;
+	if (!result.success || result.unavailable) {
+		orphanStatus = 'unavailable';
+		return;
+	}
+	orphanDeletedCount = result.removed?.length ?? 0;
+	orphanList = [];
+	orphanStatus = 'deleted';
+	orphansApi.getStorageUsage().then((r) => {
+		if (r.success) storageBytes = r.bytes;
+	});
+}
 
 $effect(() => {
 	getLockPin().then((pin) => {
@@ -322,6 +399,41 @@ async function handleDefaultIdentityChange(value: string) {
 					</div>
 					<div class="text-sm text-gray-500 dark:text-gray-400">{m.settings_storage_used()}</div>
 				</div>
+				{#if orphansApi}
+					<div class="mt-3 text-sm text-gray-700 dark:text-gray-300 space-y-2">
+						<p class="text-xs text-gray-500 dark:text-gray-400">{m.settings_orphans_hint()}</p>
+						<Button variant="secondary" size="sm" onclick={checkOrphans} disabled={orphanStatus === 'checking'}>
+							{orphanStatus === 'checking' ? m.settings_orphans_checking() : m.settings_orphans_check()}
+						</Button>
+						{#if orphanStatus === 'none'}
+							<p>{m.settings_orphans_none()}</p>
+						{:else if orphanStatus === 'unavailable'}
+							<p class="text-red-600 dark:text-red-400">{m.settings_orphans_unavailable()}</p>
+						{:else if orphanStatus === 'read-failed'}
+							<p class="text-red-600 dark:text-red-400">{m.settings_orphans_read_failed()}</p>
+						{:else if orphanStatus === 'deleted'}
+							<p>{m.settings_orphans_deleted({ count: orphanDeletedCount })}</p>
+						{:else if orphanStatus === 'found'}
+							<p>{m.settings_orphans_found({ count: orphanList.length, size: formatFileSize(orphanTotalBytes) })}</p>
+							<ul class="text-xs font-mono text-gray-600 dark:text-gray-400 space-y-0.5">
+								{#each orphanList as orphan (orphan.id)}
+									<li>{orphan.id} ({formatFileSize(orphan.bytes)})</li>
+								{/each}
+							</ul>
+							{#if orphanConfirming}
+								<p class="text-red-600 dark:text-red-400 font-medium">
+									{m.settings_orphans_confirm({ count: orphanList.length, size: formatFileSize(orphanTotalBytes) })}
+								</p>
+								<div class="flex gap-2">
+									<Button variant="danger" size="sm" onclick={deleteOrphans}>{m.settings_orphans_confirm_action()}</Button>
+									<Button variant="ghost" size="sm" onclick={() => (orphanConfirming = false)}>{m.persistence_duplicate_cancel()}</Button>
+								</div>
+							{:else}
+								<Button variant="danger" size="sm" onclick={() => (orphanConfirming = true)}>{m.settings_orphans_delete()}</Button>
+							{/if}
+						{/if}
+					</div>
+				{/if}
 			</section>
 
 			<section>

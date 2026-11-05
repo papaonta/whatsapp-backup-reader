@@ -9,6 +9,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
 	// File system operations
 	fileExists: (filePath) => ipcRenderer.invoke('fs:fileExists', filePath),
+	fileSize: (filePath) => ipcRenderer.invoke('fs:fileSize', filePath),
 
 	// Persistence file operations
 	readFileFromPath: (filePath) =>
@@ -34,12 +35,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
 				chatText,
 				mediaEntries,
 			),
-		loadManifest: (extractionDir) =>
-			ipcRenderer.invoke('extraction:loadManifest', extractionDir),
-		deleteDir: (extractionDir) =>
-			ipcRenderer.invoke('extraction:deleteDir', extractionDir),
-		pruneOrphans: (keepExtractionIds) =>
-			ipcRenderer.invoke('extraction:pruneOrphans', keepExtractionIds),
+		loadManifest: (extractionId) =>
+			ipcRenderer.invoke('extraction:loadManifest', extractionId),
+		deleteDir: (extractionId) =>
+			ipcRenderer.invoke('extraction:deleteDir', extractionId),
+		listOrphans: (keepExtractionIds) =>
+			ipcRenderer.invoke('extraction:listOrphans', keepExtractionIds),
+		deleteOrphans: (ids, keepExtractionIds) =>
+			ipcRenderer.invoke('extraction:deleteOrphans', ids, keepExtractionIds),
 		getStorageUsage: () => ipcRenderer.invoke('extraction:getStorageUsage'),
 		onProgress: (callback) => {
 			const subscription = (_event, data) => callback(data);

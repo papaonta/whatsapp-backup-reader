@@ -21,6 +21,9 @@ interface ExtractionEntry {
 
 interface ExtractionResult {
 	success: boolean;
+	// Set when the extraction folder couldn't be read (missing, drive locked,
+	// ...). Never triggers an automatic re-extraction or deletion.
+	unavailable?: boolean;
 	extractionDir?: string;
 	originalFileName?: string;
 	entries?: ExtractionEntry[];
@@ -35,8 +38,16 @@ interface ExtractionProgress {
 	progress: number;
 }
 
-interface ExtractionPruneResult {
+interface ExtractionOrphanList {
 	success: boolean;
+	unavailable?: boolean;
+	orphans?: { id: string; bytes: number }[];
+	error?: string;
+}
+
+interface ExtractionOrphanDeleteResult {
+	success: boolean;
+	unavailable?: boolean;
 	removed?: string[];
 	error?: string;
 }
@@ -58,6 +69,7 @@ interface ElectronAPI {
 	openFile: () => Promise<FileResult | null>;
 	openFolder: () => Promise<string | null>;
 	fileExists: (filePath: string) => Promise<boolean>;
+	fileSize: (filePath: string) => Promise<number | null>;
 	readFileFromPath: (filePath: string) => Promise<FileReadResult>;
 	openExternal: (url: string) => Promise<void>;
 	platform: string;
@@ -83,13 +95,18 @@ interface ElectronAPI {
 			chatText: string,
 			mediaEntries: MergedChatMediaEntry[],
 		) => Promise<ExtractionResult>;
-		loadManifest: (extractionDir: string) => Promise<ExtractionResult>;
-		deleteDir: (
-			extractionDir: string,
-		) => Promise<{ success: boolean; error?: string }>;
-		pruneOrphans: (
+		loadManifest: (extractionId: string) => Promise<ExtractionResult>;
+		deleteDir: (extractionId: string) => Promise<{
+			success: boolean;
+			deleted?: boolean;
+			unavailable?: boolean;
+			error?: string;
+		}>;
+		listOrphans: (keepExtractionIds: string[]) => Promise<ExtractionOrphanList>;
+		deleteOrphans: (
+			ids: string[],
 			keepExtractionIds: string[],
-		) => Promise<ExtractionPruneResult>;
+		) => Promise<ExtractionOrphanDeleteResult>;
 		getStorageUsage: () => Promise<
 			{ success: true; bytes: number } | { success: false; error: string }
 		>;

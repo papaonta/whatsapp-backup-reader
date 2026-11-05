@@ -385,7 +385,18 @@ async function peekChatEntry(zipPath) {
 	}
 }
 
-async function loadManifest(extractionDir) {
+// The extraction folder is always derived from the extractionId and the
+// current extraction root - persisted records may carry an absolute path from
+// an earlier run, but it is never trusted (or rewritten).
+function resolveExtractionDir(extractionRoot, extractionId) {
+	if (!isValidExtractionId(extractionId)) {
+		throw new Error('Invalid extraction id');
+	}
+	return path.join(path.resolve(extractionRoot), extractionId);
+}
+
+async function loadManifest(extractionRoot, extractionId) {
+	const extractionDir = resolveExtractionDir(extractionRoot, extractionId);
 	const manifestPath = path.join(extractionDir, MANIFEST_FILENAME);
 	const raw = await fs.promises.readFile(manifestPath, 'utf-8');
 	const manifest = JSON.parse(raw);
@@ -396,13 +407,44 @@ async function loadManifest(extractionDir) {
 	};
 }
 
-async function deleteExtractionDir(extractionRoot, extractionDir) {
-	const resolved = await resolveWithinRoot(extractionRoot, extractionDir);
-	await fs.promises.rm(resolved, { recursive: true, force: true });
+/**
+ * Deletes one chat's extraction folder. Deliberately conservative - when in
+ * doubt, it does nothing:
+ *  - the id must be a valid extraction id (so the root itself can never be
+ *    the target) and the folder must be a real directory directly under root;
+ *  - if the root itself is missing/unreadable (e.g. the drive holding it is
+ *    locked or unplugged) nothing is deleted and `unavailable` is returned;
+ *  - a folder that is genuinely absent while the root is readable counts as
+ *    already deleted.
+ * @returns {Promise<{ deleted: boolean, unavailable: boolean }>}
+ */
+async function deleteExtractionDir(extractionRoot, extractionId) {
+	const target = resolveExtractionDir(extractionRoot, extractionId);
+	try {
+		await fs.promises.readdir(extractionRoot);
+	} catch {
+		return { deleted: false, unavailable: true };
+	}
+	let stat;
+	try {
+		stat = await fs.promises.lstat(target);
+	} catch (error) {
+		if (error.code === 'ENOENT') return { deleted: false, unavailable: false };
+		return { deleted: false, unavailable: true };
+	}
+	if (!stat.isDirectory()) return { deleted: false, unavailable: false };
+	await fs.promises.rm(target, { recursive: true, force: true });
+	return { deleted: true, unavailable: false };
 }
 
-async function pruneOrphans(extractionRoot, keepExtractionIds) {
-	const validKeepIds = new Set(
+/**
+ * Lists extraction folders not referenced by `keepExtractionIds`, with their
+ * sizes. Read-only - nothing is removed here. Deleting is a separate,
+ * explicitly confirmed step (deleteOrphans), never automatic.
+ * @returns {Promise<{ unavailable: boolean, orphans: { id: string, bytes: number }[] }>}
+ */
+async function listOrphans(extractionRoot, keepExtractionIds) {
+	const keep = new Set(
 		keepExtractionIds.filter((id) => isValidExtractionId(id)),
 	);
 	let dirEntries;
@@ -410,26 +452,52 @@ async function pruneOrphans(extractionRoot, keepExtractionIds) {
 		dirEntries = await fs.promises.readdir(extractionRoot, {
 			withFileTypes: true,
 		});
-	} catch (error) {
-		if (error.code === 'ENOENT') return { removed: [] };
-		throw error;
+	} catch {
+		return { unavailable: true, orphans: [] };
 	}
 
-	const removed = [];
+	const orphans = [];
 	for (const dirEntry of dirEntries) {
 		if (!dirEntry.isDirectory()) continue;
-		if (validKeepIds.has(dirEntry.name)) continue;
 		if (!isValidExtractionId(dirEntry.name)) continue;
-		const target = path.join(extractionRoot, dirEntry.name);
-		await fs.promises.rm(target, { recursive: true, force: true });
-		removed.push(dirEntry.name);
+		if (keep.has(dirEntry.name)) continue;
+		const bytes = await getDirectorySize(
+			path.join(extractionRoot, dirEntry.name),
+		);
+		orphans.push({ id: dirEntry.name, bytes });
 	}
-	return { removed };
+	return { unavailable: false, orphans };
+}
+
+/**
+ * Deletes the given orphan folders. Every id is re-checked against the keep
+ * list and the folder's existence, so a stale or tampered list from the
+ * renderer can't remove a chat that is still referenced.
+ * @returns {Promise<{ unavailable: boolean, removed: string[] }>}
+ */
+async function deleteOrphans(extractionRoot, ids, keepExtractionIds) {
+	const { unavailable, orphans } = await listOrphans(
+		extractionRoot,
+		keepExtractionIds,
+	);
+	if (unavailable) return { unavailable: true, removed: [] };
+
+	const deletable = new Set(orphans.map((o) => o.id));
+	const removed = [];
+	for (const id of ids) {
+		if (!deletable.has(id)) continue;
+		await fs.promises.rm(path.join(extractionRoot, id), {
+			recursive: true,
+			force: true,
+		});
+		removed.push(id);
+	}
+	return { unavailable: false, removed };
 }
 
 // Recursively sums file sizes under `dir` - used for the Settings section's
 // storage-usage stat. Missing directory (nothing extracted yet) is 0 bytes,
-// not an error, same as pruneOrphans' ENOENT handling above.
+// not an error, same as listOrphans' handling of a missing root above.
 async function getDirectorySize(dir) {
 	let dirEntries;
 	try {
@@ -567,6 +635,7 @@ module.exports = {
 	peekChatEntry,
 	loadManifest,
 	deleteExtractionDir,
-	pruneOrphans,
+	listOrphans,
+	deleteOrphans,
 	getDirectorySize,
 };

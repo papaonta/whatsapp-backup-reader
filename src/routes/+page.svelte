@@ -90,6 +90,7 @@ import LockPinModal from '$lib/components/LockPinModal.svelte';
 import MediaGallery from '$lib/components/MediaGallery.svelte';
 import MergeChatsModal from '$lib/components/MergeChatsModal.svelte';
 import OnThisDayBanner from '$lib/components/OnThisDayBanner.svelte';
+import ReextractModal from '$lib/components/ReextractModal.svelte';
 import ReselectFileModal from '$lib/components/ReselectFileModal.svelte';
 import SearchResultsPanel from '$lib/components/SearchResultsPanel.svelte';
 import SettingsSection from '$lib/components/SettingsSection.svelte';
@@ -131,7 +132,6 @@ import {
 	findPersistedChatByTitle,
 	getLockPin,
 	getPersistedChats,
-	isElectronExtractedReference,
 	isElectronPathReference,
 	type PersistedChatMetadata,
 	removePersistedChat,
@@ -828,10 +828,17 @@ async function confirmDeleteChat() {
 		// duplicates can exist from before same-titled-but-different chats
 		// got disambiguated at import time.
 		const allPersisted = await getPersistedChats();
+		let blocked = false;
 		for (const record of allPersisted) {
 			if (record.chatTitle === chat.title) {
-				await removePersistedChat(record.id);
+				// false = left untouched because its storage folder isn't
+				// available - never remove the chat from the UI in that case.
+				if (!(await removePersistedChat(record.id))) blocked = true;
 			}
+		}
+		if (blocked) {
+			showToast(m.persistence_remove_blocked(), 'error');
+			return;
 		}
 	} catch (e) {
 		console.error('Failed to delete persisted chat:', e);
@@ -1360,24 +1367,8 @@ $effect(() => {
 			await defaultIdentityState.init();
 			const persisted = await getPersistedChats();
 
-			// Prune extraction folders left behind by a crash/force-quit
-			// between creating one and it being persisted, or from any
-			// persisted-but-later-removed electron-extracted chat that
-			// somehow didn't get its folder cleaned up. Runs once per
-			// launch; a no-op unless something was actually orphaned.
-			if (window.electronAPI?.isElectron && window.electronAPI.extraction) {
-				const keepIds = persisted
-					.filter((p) => isElectronExtractedReference(p.fileReference))
-					.map(
-						(p) => (p.fileReference as { extractionId: string }).extractionId,
-					);
-				window.electronAPI.extraction
-					.pruneOrphans(keepIds)
-					.catch((e) =>
-						console.error('Failed to prune orphaned extraction folders:', e),
-					);
-			}
-
+			// No automatic cleanup of extraction folders here, on purpose: orphan
+			// cleanup is manual only (Settings → Storage).
 			if (persisted.length === 0) return;
 			await handleRestoreChats(persisted);
 		} catch (e) {
@@ -1407,6 +1398,8 @@ $effect(() => {
 // permission both need a fresh user gesture, which a launch-time pass
 // doesn't have) is queued into chatsNeedingReselect instead of blocking -
 // see handleOpenReselectChat for the click-triggered follow-up.
+let archiveUnavailableNotified = false;
+
 async function handleRestoreChats(persistedChats: PersistedChatMetadata[]) {
 	for (const persistedChat of persistedChats) {
 		try {
@@ -1414,6 +1407,10 @@ async function handleRestoreChats(persistedChats: PersistedChatMetadata[]) {
 
 			if (result.needsReselect) {
 				chatsNeedingReselect = [...chatsNeedingReselect, persistedChat];
+				if (result.archiveUnavailable && !archiveUnavailableNotified) {
+					archiveUnavailableNotified = true;
+					showToast(m.persistence_archive_unavailable(), 'error');
+				}
 				continue;
 			}
 
@@ -1481,11 +1478,154 @@ async function handleRestoreChats(persistedChats: PersistedChatMetadata[]) {
 	}
 }
 
+// Manual re-extraction for a chat whose extraction folder can't be read.
+// Nothing here ever runs automatically: the modal explains the situation,
+// shows the original ZIP's size, and only extracts after an explicit click.
+let reextractTarget = $state<PersistedChatMetadata | null>(null);
+let reextractZipBytes = $state<number | null | undefined>(undefined);
+let reextractBusy = $state(false);
+let reextractProgress = $state(0);
+let reextractError = $state<string | null>(null);
+
+async function openReextract(persistedChat: PersistedChatMetadata) {
+	const ref = persistedChat.fileReference;
+	if (ref.type !== 'electron-extracted') return;
+	reextractTarget = persistedChat;
+	reextractZipBytes = undefined;
+	reextractError = null;
+	reextractProgress = 0;
+	reextractZipBytes = ref.originalFilePath
+		? await (window.electronAPI?.fileSize(ref.originalFilePath) ?? null)
+		: null;
+}
+
+function closeReextract() {
+	if (reextractBusy && reextractTarget) {
+		// Cancelling a running extraction - the main process cleans up the
+		// partial folder it was writing.
+		const ref = reextractTarget.fileReference;
+		if (ref.type === 'electron-extracted') {
+			window.electronAPI?.extraction?.cancelExtract(ref.extractionId);
+		}
+		return;
+	}
+	reextractTarget = null;
+}
+
+async function confirmReextract() {
+	const target = reextractTarget;
+	const extractionApi = window.electronAPI?.extraction;
+	if (!target || !extractionApi || reextractBusy) return;
+	const ref = target.fileReference;
+	if (ref.type !== 'electron-extracted') return;
+
+	reextractBusy = true;
+	reextractError = null;
+	reextractProgress = 0;
+	const unsubscribe = extractionApi.onProgress((p) => {
+		if (p.extractionId === ref.extractionId) reextractProgress = p.progress;
+	});
+	try {
+		const result = await extractionApi.extract(
+			ref.originalFilePath,
+			ref.extractionId,
+		);
+		if (!result.success || !result.entries || !result.extractionDir) {
+			reextractError = result.cancelled
+				? null
+				: result.error || m.reextract_failed();
+			if (result.cancelled) reextractTarget = null;
+			return;
+		}
+		const { validationPassed } = await loadChatFromExtraction(
+			{
+				extractionDir: result.extractionDir,
+				extractionId: ref.extractionId,
+				originalFileName: result.originalFileName,
+				entries: result.entries,
+			},
+			target,
+		);
+		if (!validationPassed) {
+			showToast(
+				m.persistence_reselect_mismatch({ chatTitle: target.chatTitle }),
+				'error',
+			);
+			reextractTarget = null;
+			return;
+		}
+		chatFileReferences.set(target.chatTitle, {
+			file: null,
+			extractionDir: result.extractionDir,
+			extractionId: ref.extractionId,
+			persistedId: target.id,
+		});
+		persistBookmarksForChat(target.chatTitle);
+		chatsNeedingReselect = chatsNeedingReselect.filter(
+			(c) => c.id !== target.id,
+		);
+		reextractTarget = null;
+	} catch (e) {
+		reextractError = e instanceof Error ? e.message : m.reextract_failed();
+	} finally {
+		unsubscribe();
+		reextractBusy = false;
+	}
+}
+
+// Falls back to the classic "pick the ZIP again" flow (loads it in memory).
+async function chooseFileInsteadOfReextract() {
+	const target = reextractTarget;
+	if (!target || reextractBusy) return;
+	reextractTarget = null;
+	reselectChatMetadata = target;
+	showReselectFileModal = true;
+	const reselected = await new Promise<{
+		file: File;
+		path?: string;
+		handle?: FileSystemFileHandle;
+	} | null>((resolve) => {
+		reselectResolve = resolve;
+	});
+	reselectChatMetadata = null;
+	showReselectFileModal = false;
+	if (!reselected) return;
+
+	const buffer = await reselected.file.arrayBuffer();
+	const { validationPassed } = await loadChatFromBuffer(
+		buffer,
+		reselected.file.name,
+		target,
+	);
+	if (!validationPassed) {
+		showToast(
+			m.persistence_reselect_mismatch({ chatTitle: target.chatTitle }),
+			'error',
+		);
+		return;
+	}
+	const reselectedPath =
+		reselected.path || getElectronFilePath(reselected.file);
+	chatFileReferences.set(target.chatTitle, {
+		file: reselected.file,
+		filePath: reselectedPath,
+		persistedId: target.id,
+	});
+	chatsNeedingReselect = chatsNeedingReselect.filter((c) => c.id !== target.id);
+}
+
 // Opens the reselect flow for a chat that's been sitting in
 // chatsNeedingReselect - triggered by the user clicking its placeholder row
 // in the sidebar, which is the fresh user gesture the browser requires for
 // file access.
 async function handleOpenReselectChat(persistedChat: PersistedChatMetadata) {
+	if (
+		persistedChat.fileReference.type === 'electron-extracted' &&
+		window.electronAPI?.extraction
+	) {
+		await openReextract(persistedChat);
+		return;
+	}
 	reselectChatMetadata = persistedChat;
 	showReselectFileModal = true;
 	const reselected = await new Promise<{
@@ -2877,6 +3017,21 @@ onCancel={cancelDeleteChat}
 chat={appState.selectedChat}
 onConfirm={confirmBackupChatAsZip}
 onCancel={() => (showBackupConfirm = false)}
+/>
+{/if}
+
+<!-- Manual re-extract confirmation (storage folder unavailable) -->
+{#if reextractTarget && reextractTarget.fileReference.type === 'electron-extracted'}
+<ReextractModal
+chatTitle={reextractTarget.chatTitle}
+zipPath={reextractTarget.fileReference.originalFilePath}
+zipBytes={reextractZipBytes}
+busy={reextractBusy}
+progress={reextractProgress}
+error={reextractError}
+onConfirm={confirmReextract}
+onChooseFile={chooseFileInsteadOfReextract}
+onCancel={closeReextract}
 />
 {/if}
 
