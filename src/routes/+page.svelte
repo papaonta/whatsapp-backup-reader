@@ -102,6 +102,7 @@ import {
 	createPlaceholderZipFile,
 	getElectronFilePath,
 	openElectronFile,
+	openFileInput,
 } from '$lib/helpers/file-picker';
 import { sanitizeFilename } from '$lib/helpers/format';
 import { mergeChats } from '$lib/helpers/merge-chats';
@@ -115,6 +116,7 @@ import {
 	isElectronApp,
 	isMobileViewport,
 } from '$lib/helpers/responsive';
+import { appLockState } from '$lib/app-lock.svelte';
 import * as m from '$lib/paraglide/messages';
 import { getLocale } from '$lib/paraglide/runtime';
 import {
@@ -263,6 +265,14 @@ let loadingChats = $state<LoadingChat[]>([]);
 
 // Derived loading state for FileDropZone (empty state)
 const isLoadingFiles = $derived(loadingChats.length > 0);
+
+// Pause auto-lock while an import, backup or re-extraction is running: with
+// no mouse/keyboard activity the idle timer could otherwise lock the app
+// (remounting this page) halfway through a long operation.
+$effect(() => {
+	if (!(isLoadingFiles || isBackingUpChat || reextractBusy)) return;
+	return appLockState.suspend();
+});
 const loadingFilesProgress = $derived.by(() => {
 	if (loadingChats.length === 0) return 0;
 	const total = loadingChats.reduce((sum, lc) => sum + lc.progress, 0);
@@ -490,7 +500,7 @@ async function handleSidebarImport() {
 		// showOpenFilePicker(): Chrome spuriously flags the tab as "Page
 		// Unresponsive" while that picker's promise is pending and the user
 		// is still browsing. Drag-and-drop still captures a FileSystemFileHandle.
-		sidebarFileInput?.click();
+		openFileInput(sidebarFileInput);
 	}
 }
 
@@ -1184,7 +1194,18 @@ async function handleBackupChatAsZip() {
 	}
 }
 
+// Keeps auto-lock paused for the whole merge (it re-reads media and writes a
+// new extraction folder, which can take a while with no user activity).
 async function handleMergeChats(otherChats: ChatData[], mergedTitle: string) {
+	const releaseLock = appLockState.suspend();
+	try {
+		await runMergeChats(otherChats, mergedTitle);
+	} finally {
+		releaseLock();
+	}
+}
+
+async function runMergeChats(otherChats: ChatData[], mergedTitle: string) {
 	if (!appState.selectedChat) return;
 	const currentChat = appState.selectedChat;
 	const sourceChats = [currentChat, ...otherChats];

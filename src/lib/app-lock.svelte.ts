@@ -24,6 +24,11 @@ function createAppLockState() {
 	let isLocked = $state(false);
 
 	let idleTimer: ReturnType<typeof setTimeout> | undefined;
+	// Number of in-flight operations that must not trigger an auto-lock - the
+	// app's own file dialogs (opening one blurs the window) and long imports.
+	// A counter, not a flag, so overlapping operations can't release each
+	// other's pause.
+	let suspendCount = 0;
 
 	function resetIdleTimer() {
 		if (idleTimer) clearTimeout(idleTimer);
@@ -32,6 +37,7 @@ function createAppLockState() {
 		}
 		idleTimer = setTimeout(
 			() => {
+				if (suspendCount > 0) return;
 				isLocked = true;
 			},
 			settings.autoLockIdleMinutes * 60 * 1000,
@@ -39,6 +45,7 @@ function createAppLockState() {
 	}
 
 	function handleBlur() {
+		if (suspendCount > 0) return;
 		if (settings.enabled && settings.lockOnBlur) {
 			isLocked = true;
 		}
@@ -72,6 +79,22 @@ function createAppLockState() {
 
 		completeOnboarding(): void {
 			onboardingCompleted = true;
+		},
+
+		/**
+		 * Pauses auto-lock (idle timer and lock-on-blur) until the returned
+		 * release function is called. Always release in a `finally`. Safe to
+		 * call the release more than once. An explicit lockNow() still locks.
+		 */
+		suspend(): () => void {
+			suspendCount++;
+			let released = false;
+			return () => {
+				if (released) return;
+				released = true;
+				suspendCount = Math.max(0, suspendCount - 1);
+				resetIdleTimer();
+			};
 		},
 
 		lockNow(): void {

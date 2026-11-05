@@ -1,5 +1,5 @@
 <script lang="ts">
-import { openElectronFile } from '$lib/helpers/file-picker';
+import { openElectronFile, openFileInput } from '$lib/helpers/file-picker';
 import { isElectronApp } from '$lib/helpers/responsive';
 import * as m from '$lib/paraglide/messages';
 import type { PersistedChatMetadata } from '$lib/persistence.svelte';
@@ -108,7 +108,7 @@ async function openBrowse() {
 	// the file onto the dropzone below still captures a FileSystemFileHandle
 	// (upgrading the saved entry so it won't need re-selecting next time) —
 	// only the click-to-browse path loses that upgrade, not drag-and-drop.
-	fileInputRef?.click();
+	openFileInput(fileInputRef);
 }
 
 function handleDropZoneKeydown(e: KeyboardEvent) {

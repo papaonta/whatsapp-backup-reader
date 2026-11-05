@@ -2,6 +2,7 @@
 import {
 	createPlaceholderZipFile,
 	openElectronFile,
+	openFileInput,
 } from '$lib/helpers/file-picker';
 import * as m from '$lib/paraglide/messages';
 import Icon from './Icon.svelte';
@@ -85,7 +86,7 @@ function openFilePicker() {
 	// showOpenFilePicker(): Chrome spuriously flags the tab as "Page
 	// Unresponsive" while that picker's promise is pending and the user
 	// is still browsing. Drag-and-drop still captures a FileSystemFileHandle.
-	fileInput?.click();
+	openFileInput(fileInput);
 }
 
 async function openElectronFilePicker() {

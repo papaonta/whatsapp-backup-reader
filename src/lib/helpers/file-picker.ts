@@ -1,3 +1,5 @@
+import { appLockState } from '$lib/app-lock.svelte';
+
 /**
  * Shared file-picker helpers for ZIP imports.
  *
@@ -24,10 +26,49 @@ export async function openElectronFile(): Promise<{
 } | null> {
 	if (!window.electronAPI) return null;
 
-	const result = await window.electronAPI.openFile();
-	if (!result) return null;
+	// Opening a native dialog blurs the window; without this, lock-on-blur
+	// would lock the app (and remount the page) behind the dialog.
+	const release = appLockState.suspend();
+	try {
+		const result = await window.electronAPI.openFile();
+		if (!result) return null;
 
-	return { name: result.name, path: result.path };
+		return { name: result.name, path: result.path };
+	} finally {
+		release();
+	}
+}
+
+/**
+ * Opens a web <input type="file"> dialog while keeping auto-lock paused. The
+ * pause ends on `change`, `cancel`, or (as a fallback for browsers without a
+ * `cancel` event) shortly after the window regains focus, with a hard upper
+ * bound so a lost event can never leave auto-lock disabled.
+ */
+export function openFileInput(input: HTMLInputElement | null | undefined) {
+	if (!input) return;
+	const release = appLockState.suspend();
+	let focusTimer: ReturnType<typeof setTimeout> | undefined;
+	let done = false;
+	const finish = () => {
+		if (done) return;
+		done = true;
+		input.removeEventListener('change', finish);
+		input.removeEventListener('cancel', finish);
+		window.removeEventListener('focus', onFocus);
+		clearTimeout(focusTimer);
+		clearTimeout(safetyTimer);
+		release();
+	};
+	const onFocus = () => {
+		// Give `change` a chance to fire first.
+		focusTimer = setTimeout(finish, 1000);
+	};
+	const safetyTimer = setTimeout(finish, 5 * 60 * 1000);
+	input.addEventListener('change', finish);
+	input.addEventListener('cancel', finish);
+	window.addEventListener('focus', onFocus);
+	input.click();
 }
 
 /**

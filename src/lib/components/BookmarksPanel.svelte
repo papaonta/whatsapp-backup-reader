@@ -1,5 +1,6 @@
 <script lang="ts">
 import { type Bookmark, bookmarksState } from '$lib/bookmarks.svelte';
+import { openFileInput } from '$lib/helpers/file-picker';
 import * as m from '$lib/paraglide/messages';
 import { getLocale } from '$lib/paraglide/runtime';
 import BookmarkModal from './BookmarkModal.svelte';
@@ -314,7 +315,7 @@ function handleKeydown(e: KeyboardEvent) {
 				variant="secondary"
 				size="sm"
 				class="flex-1 justify-center"
-				onclick={() => importInput.click()}
+				onclick={() => openFileInput(importInput)}
 			>
 				<Icon name="upload" size="sm" />
 				{m.bookmarks_import_button()}
