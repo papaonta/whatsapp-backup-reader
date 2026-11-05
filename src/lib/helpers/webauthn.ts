@@ -27,7 +27,9 @@ function randomBytes(length: number): Uint8Array {
 
 export async function isPlatformAuthenticatorAvailable(): Promise<boolean> {
 	if (typeof window === 'undefined') return false;
-	if (!window.PublicKeyCredential?.isUserVerifyingPlatformAuthenticatorAvailable) {
+	if (
+		!window.PublicKeyCredential?.isUserVerifyingPlatformAuthenticatorAvailable
+	) {
 		return false;
 	}
 	try {
@@ -44,7 +46,8 @@ export function getBiometricLabel(): string {
 		window as Window & { electronAPI?: { platform?: string } }
 	).electronAPI?.platform;
 
-	const platformString = electronPlatform || navigator.platform || navigator.userAgent;
+	const platformString =
+		electronPlatform || navigator.platform || navigator.userAgent;
 
 	if (/Mac|iPhone|iPad|iPod|darwin/i.test(platformString)) return 'Touch ID';
 	if (/Win/i.test(platformString)) return 'Windows Hello';

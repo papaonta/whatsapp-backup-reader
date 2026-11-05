@@ -170,7 +170,10 @@ async function handleBiometricUnlock() {
 	biometricAbortController = new AbortController();
 	waitingForBiometric = true;
 	try {
-		const ok = await verifyBiometric(credentialId, biometricAbortController.signal);
+		const ok = await verifyBiometric(
+			credentialId,
+			biometricAbortController.signal,
+		);
 		if (ok) {
 			onSuccess();
 		} else {
@@ -188,7 +191,9 @@ async function handleBiometricOfferEnable() {
 	biometricAbortController = new AbortController();
 	waitingForBiometric = true;
 	try {
-		const credentialId = await registerBiometric(biometricAbortController.signal);
+		const credentialId = await registerBiometric(
+			biometricAbortController.signal,
+		);
 		if (credentialId) await setWebAuthnCredentialId(credentialId);
 	} finally {
 		isSubmitting = false;
