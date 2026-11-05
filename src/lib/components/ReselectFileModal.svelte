@@ -90,7 +90,7 @@ async function openBrowse() {
 	// it still needs a real content-bearing File.
 	if (window.electronAPI) {
 		const result = await openElectronFile();
-		if (!result || !result.name.toLowerCase().endsWith('.zip')) return;
+		if (!result?.name.toLowerCase().endsWith('.zip')) return;
 
 		const readResult = await window.electronAPI.readFileFromPath(result.path);
 		if (!readResult.success || !readResult.buffer) return;
