@@ -6,6 +6,7 @@ const {
 	protocol,
 	Menu,
 	shell,
+	session,
 } = require('electron');
 const { autoUpdater } = require('electron-updater');
 const path = require('node:path');
@@ -73,6 +74,15 @@ app.on('web-contents-created', (_event, contents) => {
 	contents.on('will-navigate', blockNavigation);
 	contents.on('will-redirect', blockNavigation);
 });
+
+// Leftovers from websites that were once opened inside the app window
+// (cookies, service workers, Cache Storage). Only these three storage types
+// are cleared - the explicit list guarantees IndexedDB and localStorage (PIN,
+// chat list, starred messages, settings) are never touched.
+const SITE_DATA_STORAGES = ['cookies', 'serviceworkers', 'cachestorage'];
+
+const clearSiteData = () =>
+	session.defaultSession.clearStorageData({ storages: SITE_DATA_STORAGES });
 
 // Get the build directory path
 const getBuildPath = () => {
@@ -156,7 +166,11 @@ protocol.registerSchemesAsPrivileged([
 
 // This method will be called when Electron has finished
 // initialization and is ready to create browser windows.
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+	await clearSiteData().catch((err) => {
+		console.error('Failed to clear leftover site data:', err);
+	});
+
 	// Register protocol handler for 'app://' scheme
 	protocol.handle('app', async (request) => {
 		// Parse the URL to get just the pathname
@@ -564,6 +578,18 @@ ipcMain.handle('extraction:getStorageUsage', async () => {
 	try {
 		const bytes = await getDirectorySize(getExtractionRoot(app));
 		return { success: true, bytes };
+	} catch (error) {
+		return {
+			success: false,
+			error: error instanceof Error ? error.message : String(error),
+		};
+	}
+});
+
+ipcMain.handle('siteData:clear', async () => {
+	try {
+		await clearSiteData();
+		return { success: true };
 	} catch (error) {
 		return {
 			success: false,

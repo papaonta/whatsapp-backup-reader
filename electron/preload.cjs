@@ -15,6 +15,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
 	readFileFromPath: (filePath) =>
 		ipcRenderer.invoke('file:readFromPath', filePath),
 
+	// Clears cookies, service workers and Cache Storage only
+	clearSiteData: () => ipcRenderer.invoke('siteData:clear'),
+
 	// External links
 	openExternal: (url) => ipcRenderer.invoke('shell:openExternal', url),
 

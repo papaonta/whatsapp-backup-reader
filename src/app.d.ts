@@ -70,6 +70,7 @@ interface ElectronAPI {
 	openFolder: () => Promise<string | null>;
 	fileExists: (filePath: string) => Promise<boolean>;
 	fileSize: (filePath: string) => Promise<number | null>;
+	clearSiteData: () => Promise<{ success: boolean; error?: string }>;
 	readFileFromPath: (filePath: string) => Promise<FileReadResult>;
 	openExternal: (url: string) => Promise<void>;
 	platform: string;

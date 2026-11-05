@@ -35,6 +35,18 @@ let pendingEnableAfterSetup = $state(false);
 let storageBytes = $state<number | null>(null);
 let storageError = $state(false);
 
+// Clears cookies / service workers / Cache Storage left by websites (Electron
+// only). Never touches the saved chats, PIN, starred messages or settings.
+const canClearSiteData = !!window.electronAPI?.clearSiteData;
+let siteDataStatus = $state<'idle' | 'busy' | 'done' | 'failed'>('idle');
+
+async function clearSiteData() {
+	if (!window.electronAPI?.clearSiteData) return;
+	siteDataStatus = 'busy';
+	const result = await window.electronAPI.clearSiteData();
+	siteDataStatus = result.success ? 'done' : 'failed';
+}
+
 // Manual orphan-folder cleanup (Electron only). Nothing is ever deleted
 // automatically: list first, then delete only after an explicit confirmation,
 // and only if the saved chat list was read successfully.
@@ -399,6 +411,19 @@ async function handleDefaultIdentityChange(value: string) {
 					</div>
 					<div class="text-sm text-gray-500 dark:text-gray-400">{m.settings_storage_used()}</div>
 				</div>
+				{#if canClearSiteData}
+					<div class="mt-3 text-sm text-gray-700 dark:text-gray-300 space-y-2">
+						<p class="text-xs text-gray-500 dark:text-gray-400">{m.settings_site_data_hint()}</p>
+						<Button variant="secondary" size="sm" onclick={clearSiteData} disabled={siteDataStatus === 'busy'}>
+							{m.settings_site_data_clear()}
+						</Button>
+						{#if siteDataStatus === 'done'}
+							<p>{m.settings_site_data_cleared()}</p>
+						{:else if siteDataStatus === 'failed'}
+							<p class="text-red-600 dark:text-red-400">{m.settings_site_data_failed()}</p>
+						{/if}
+					</div>
+				{/if}
 				{#if orphansApi}
 					<div class="mt-3 text-sm text-gray-700 dark:text-gray-300 space-y-2">
 						<p class="text-xs text-gray-500 dark:text-gray-400">{m.settings_orphans_hint()}</p>

@@ -429,5 +429,9 @@
   "settings_orphans_confirm_action": "Ya, hapus",
   "settings_orphans_deleted": "{count} folder dihapus",
   "settings_orphans_unavailable": "Folder penyimpanan tidak tersedia - tidak ada yang diperiksa atau dihapus.",
-  "settings_orphans_read_failed": "Daftar chat tersimpan tidak dapat dibaca - tidak ada yang dihapus."
+  "settings_orphans_read_failed": "Daftar chat tersimpan tidak dapat dibaca - tidak ada yang dihapus.",
+  "settings_site_data_hint": "Cookie, service worker, dan cache sisa situs web. Chat, PIN, pesan berbintang, dan pengaturan Anda tidak terpengaruh.",
+  "settings_site_data_clear": "Bersihkan data situs web",
+  "settings_site_data_cleared": "Data situs web dibersihkan",
+  "settings_site_data_failed": "Data situs web tidak dapat dibersihkan"
 }

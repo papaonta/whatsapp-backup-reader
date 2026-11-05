@@ -429,5 +429,9 @@
   "settings_orphans_confirm_action": "Yes, delete",
   "settings_orphans_deleted": "{count} folders deleted",
   "settings_orphans_unavailable": "The storage folder isn't available - nothing was checked or deleted.",
-  "settings_orphans_read_failed": "Couldn't read the saved chat list - nothing was deleted."
+  "settings_orphans_read_failed": "Couldn't read the saved chat list - nothing was deleted.",
+  "settings_site_data_hint": "Cookies, service workers and cache left by websites. Your chats, PIN, starred messages and settings are not affected.",
+  "settings_site_data_clear": "Clear website data",
+  "settings_site_data_cleared": "Website data cleared",
+  "settings_site_data_failed": "Couldn't clear website data"
 }
