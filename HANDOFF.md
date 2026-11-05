@@ -628,6 +628,24 @@ Commit `chore: polish Indonesian terms and remove upstream leftovers` (hash: lih
 - `src/app.html`: og:url/twitter:url diarahkan ke repo fork; meta gambar (og:image*, twitter:image*) yang host-nya rodrigogs dihapus; `twitter:card` jadi `summary`.
 - `CLAUDE.md`: referensi `machine-translate` dihapus; aturan baru: key i18n wajib ke `en.json` DAN `id.json`.
 
+### 2026-11-06 - Task 4b: tambal celah keamanan data (lokasi arsip BELUM dikerjakan)
+
+Prinsip: kalau ragu, diam. App tidak boleh menghapus, mengekstrak ulang, atau mengubah data saat folder arsip tidak tersedia (mis. brankas Cryptomator terkunci). Commit (urut): `10ea0c5` (A link), `cdbe44c` (B pengamanan data), `fa8b4f0` (C jeda auto-lock), `bf2b533` (D cache), `044537b` + `caca23d` (E script tes), `4065950` (perbaikan bintang saat Update, ditemukan lewat tes).
+
+- **A. Link:** `setWindowOpenHandler` + `will-navigate` + `will-redirect` di `electron/main.cjs`. http/https/mailto dibuka lewat `shell.openExternal`, skema lain ditolak, tidak pernah ada jendela baru, navigasi keluar origin app diblokir.
+- **B. Data:**
+  - `pruneOrphans` otomatis saat launch DIHAPUS. Gantinya: Settings → Storage → "Periksa folder yatim" (daftar + ukuran), lalu konfirmasi sebelum hapus; hanya jalan bila daftar chat terbaca sukses (`getPersistedChatsStrict`) dan folder arsip terbaca. Main process memeriksa ulang tiap id terhadap daftar keep.
+  - Re-extract otomatis DIHAPUS. Chat yang folder ekstraksinya tak terbaca tampil "Tap to reopen" + toast; klik membuka `ReextractModal` (perkiraan ukuran ZIP + konfirmasi) atau pilih file lain.
+  - Folder ekstraksi dihitung dari `extractionId` + root saat ini (`loadManifest(id)`, `deleteDir(id)`); `extractionDir` absolut di record lama diabaikan, tidak ditulis ulang.
+  - `deleteDir` wajib `isValidExtractionId`, tidak bisa menarget root, dan menolak bila root tak terbaca; `removePersistedChat` tidak menghapus record bila folder tak bisa dihapus (return `false`; Delete Chat menampilkan toast).
+  - Update/re-import menggabungkan bintang + transkripsi record lama; record baru ditulis DULU, baru record lama dihapus.
+- **C. Auto-lock:** `appLockState.suspend()` (penghitung, release di `finally`). Dipakai di dialog native Electron, `openFileInput` (input file web), serta selama impor/merge/backup/re-extract.
+- **D. Cache:** `clearStorageData({storages: ['cookies','serviceworkers','cachestorage']})` saat startup + tombol Settings. IndexedDB/localStorage tidak tersentuh. Catatan: cookie locale Paraglide ikut terhapus dan dibuat ulang otomatis.
+- **E. Script:** `npm run electron:dev:test` (profil `~/.whats-reader-test-profile`) dan `electron:dev:test:fresh` (profil sementara). Menolak profil asli, membersihkan `ELECTRON_RUN_AS_NODE`.
+- Catatan lingkungan: `node node_modules/electron/install.js` gagal diam-diam di Node 26; binary dipasang manual dari cache (`~/Library/Caches/electron`) + `path.txt`.
+- Hasil tes (profil terisolasi): link 5/5, cache 3/3, PIN+dialog 4/4, orphan/prune 9/9, brankas terkunci + bintang 9/9, regresi impor/cancel/delete/re-extract 6/6.
+- Belum dikerjakan: "Lokasi arsip" (bagian 4 audit 4a), pengecekan penanda arsip.
+
 ## Working conventions established across sessions (don't relitigate)
 
 - New i18n keys: add to both `messages/en.json` and `messages/id.json`
