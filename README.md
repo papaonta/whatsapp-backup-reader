@@ -9,9 +9,9 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/rodrigogs/whats-reader/releases/latest"><img src="https://img.shields.io/github/v/release/rodrigogs/whats-reader?style=flat-square&color=blue" alt="Latest Release" /></a>
-  <a href="https://github.com/rodrigogs/whats-reader/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/rodrigogs/whats-reader/ci.yml?branch=dev&style=flat-square&label=CI" alt="CI Status" /></a>
-  <a href="https://github.com/rodrigogs/whats-reader/blob/main/LICENSE"><img src="https://img.shields.io/github/license/rodrigogs/whats-reader?style=flat-square" alt="License" /></a>
+  <a href="https://github.com/papaonta/whatsapp-backup-reader/releases/latest"><img src="https://img.shields.io/github/v/release/papaonta/whatsapp-backup-reader?style=flat-square&color=blue" alt="Latest Release" /></a>
+  <a href="https://github.com/papaonta/whatsapp-backup-reader/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/papaonta/whatsapp-backup-reader/ci.yml?branch=main&style=flat-square&label=CI" alt="CI Status" /></a>
+  <a href="https://github.com/papaonta/whatsapp-backup-reader/blob/main/LICENSE"><img src="https://img.shields.io/github/license/papaonta/whatsapp-backup-reader?style=flat-square" alt="License" /></a>
 </p>
 
 <p align="center">
@@ -23,15 +23,7 @@
 
 <p align="center">
   <strong>English</strong> •
-  <a href="README.pt.md">Português</a> •
-  <a href="README.es.md">Español</a> •
-  <a href="README.fr.md">Français</a> •
-  <a href="README.de.md">Deutsch</a> •
-  <a href="README.it.md">Italiano</a> •
-  <a href="README.nl.md">Nederlands</a> •
-  <a href="README.ja.md">日本語</a> •
-  <a href="README.zh.md">中文</a> •
-  <a href="README.ru.md">Русский</a>
+  <a href="README.id.md">Bahasa Indonesia</a>
 </p>
 
 <p align="center">
@@ -39,12 +31,12 @@
   <a href="#quick-start">Quick Start</a> •
   <a href="#how-to-export-from-whatsapp">Export Guide</a> •
   <a href="#privacy--security">Privacy</a> •
-  <a href="#contributing">Contributing</a>
+  <a href="#feedback">Feedback</a>
 </p>
 
 ---
 
-> **This is an independent fork** of [rodrigogs/whats-reader](https://github.com/rodrigogs/whats-reader), maintained by [papaonta](https://github.com/papaonta). All credit for the original app goes to [Rodrigo Gomes da Silva](https://github.com/rodrigogs) and its contributors. This fork adds a WhatsApp-Desktop-style UI redesign and a handful of extra features on top; it is not affiliated with or endorsed by the upstream project. Released under the same [AGPL-3.0 license](LICENSE).
+> **This is an independent fork** of [rodrigogs/whats-reader](https://github.com/rodrigogs/whats-reader), maintained by [papaonta](https://github.com/papaonta). All credit for the original app goes to [Rodrigo Gomes da Silva](https://github.com/rodrigogs) and its contributors. This fork adds a WhatsApp-Desktop-style UI redesign and a set of extra features on top (see [Features](#features)); it is not affiliated with or endorsed by the upstream project. Released under the same [AGPL-3.0 license](LICENSE).
 
 ## What it does
 
@@ -57,6 +49,8 @@ Voice messages can be transcribed using [Whisper](https://openai.com/research/wh
 <details>
 <summary>Screenshots</summary>
 <br>
+
+> These screenshots were taken from the original upstream UI and do not yet show this fork's redesign.
 
 | Start Screen | Chat View |
 |:---:|:---:|
@@ -87,7 +81,7 @@ Voice messages can be transcribed using [Whisper](https://openai.com/research/wh
 Get the desktop app for your platform:
 
 ### Windows
-- Download **WhatsApp-Backup-Reader-Setup-{version}.exe** from [latest release](https://github.com/rodrigogs/whats-reader/releases/latest)
+- Download **WhatsApp-Backup-Reader-Setup-{version}.exe** from the [latest release](https://github.com/papaonta/whatsapp-backup-reader/releases/latest)
 - Run the installer and follow the setup wizard
 - The app will auto-update when new versions are available
 
@@ -112,11 +106,28 @@ Get the desktop app for your platform:
   ./WhatsApp-Backup-Reader-{version}.AppImage
   ```
 
-> **Or use the web version**: Visit [rodrigogs.github.io/whats-reader](https://rodrigogs.github.io/whats-reader) - no installation needed!
-
 ---
 
 ## Features
+
+**Added in this fork**
+
+- **WhatsApp Desktop-style layout**: icon rail, persistent chat list (every saved chat is there on launch), settings as a full section
+- **PIN lock**: lock the whole app or individual chats, with optional biometric unlock (Touch ID / Windows Hello). It is a UI gate, not encryption: stored data is not encrypted at rest
+- **Archive and delete chats**: archived chats move to their own view
+- **Starred messages**: star any message (or media item) with a note; persisted across restarts
+- **All Media**: one gallery across every loaded chat, with a chat badge on each item
+- **Cross-chat search**: search message content across all loaded chats
+- **Chat info panel**: participants, phone numbers, message counts, date range
+- **Default "View as" identity**: set your name or number once; it is applied to new chats, and inferred automatically from a "You deleted this message" line when possible
+- **Merge exports**: combine several exports of the same chat without duplicates
+- **Backup as ZIP / export as HTML**: download a chat's transcript with all media as one ZIP, or as a printable HTML file
+- **Large ZIPs (desktop)**: streams multi-GB exports to disk, repairs exports with a broken ZIP directory, and lets you cancel an import
+- **"On This Day"** memories banner and per-sender name colors in group chats
+- **Better system/deleted message detection** and more date formats
+- **Interface in English and Bahasa Indonesia**
+
+**From the original app**
 
 - **Media Gallery**: Browse all photos, videos, and audio in a thumbnail grid view
   - Date-based organization with calendar navigation
@@ -125,11 +136,9 @@ Get the desktop app for your platform:
 - **Auto-update**: Desktop app automatically checks and installs updates (Electron only)
 - **Voice transcription**: Transcribe audio with Whisper (runs locally, 12+ languages)
 - **Search**: Full-text search across messages and transcriptions
-- **Bookmarks**: Save messages with notes, export/import as JSON
 - **Perspective mode**: View the chat as any participant
 - **Statistics**: Message counts, activity charts, timeline
 - **Dark mode**: Follows system or toggle manually (preference saved)
-- **Multi-language UI**: English, Portuguese, Spanish, French, German, Italian, Dutch, Japanese, Chinese, Russian
 - **Desktop app**: macOS, Windows, Linux via Electron
 
 ---
@@ -138,7 +147,7 @@ Get the desktop app for your platform:
 
 ### Prerequisites
 
-You need [Node.js](https://nodejs.org/) installed (version 18 or later). Download it from [nodejs.org](https://nodejs.org/) and run the installer.
+You need [Node.js](https://nodejs.org/) installed (version 24, see `mise.toml`). Download it from [nodejs.org](https://nodejs.org/) and run the installer.
 
 To check if you have it:
 ```bash
@@ -220,7 +229,7 @@ This app is designed with privacy as the top priority. Your WhatsApp data never 
 Don't just trust us. Verify it yourself:
 
 1. **Read the source code**  
-   Browse the [GitHub repository](https://github.com/rodrigogs/whats-reader). The main logic is in `src/lib/` and `src/routes/`.
+   Browse the [GitHub repository](https://github.com/papaonta/whatsapp-backup-reader). The main logic is in `src/lib/` and `src/routes/`.
 
 2. **Check network requests**  
    Open the browser's DevTools (F12) → Network tab → Use the app. You'll see **zero external requests** (except initial page load if using web version).
@@ -231,8 +240,8 @@ Don't just trust us. Verify it yourself:
 4. **Build from source**  
    Clone the repo and build it yourself:
    ```bash
-   git clone https://github.com/rodrigogs/whats-reader.git
-   cd whats-reader
+   git clone https://github.com/papaonta/whatsapp-backup-reader.git
+   cd whatsapp-backup-reader
    npm install
    npm run build
    ```
@@ -262,14 +271,10 @@ Don't just trust us. Verify it yourself:
 | `npm run electron:build:mac` | Build for macOS |
 | `npm run electron:build:win` | Build for Windows |
 | `npm run electron:build:linux` | Build for Linux |
-| `npm run machine-translate` | Auto-translate with inlang |
 
-### Adding translations
+### Translations
 
-Translation files are in `messages/`. To add a new language:
-1. Copy `messages/en.json` to `messages/{locale}.json`
-2. Translate the strings
-3. Add the locale to `project.inlang/settings.json`
+The interface supports English and Bahasa Indonesia. Strings live in `messages/en.json` and `messages/id.json`; when you add a key, add it to both files.
 
 ---
 
@@ -284,25 +289,11 @@ Translation files are in `messages/`. To add a new language:
 
 ---
 
-## Contributing
+## Feedback
 
-Found a bug or have an idea? [Open an issue](https://github.com/rodrigogs/whats-reader/issues) on GitHub.
-
-Want to contribute code? Fork the repo, make your changes, and open a pull request.
+This is a personal fork. Found a bug? [Open an issue](https://github.com/papaonta/whatsapp-backup-reader/issues).
 
 There are example chat files in `examples/chats/` you can use for testing.
-
----
-
-## Star History
-
-<a href="https://star-history.com/#rodrigogs/whats-reader&Date">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=rodrigogs/whats-reader&type=Date&theme=dark" />
-    <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=rodrigogs/whats-reader&type=Date" />
-    <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=rodrigogs/whats-reader&type=Date" />
-  </picture>
-</a>
 
 ---
 

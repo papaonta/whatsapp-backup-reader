@@ -12,8 +12,8 @@ https://github.com/papaonta/whatsapp-backup-reader.git kalau folder ini
 kosong, terus npm install). Baca HANDOFF.md di root repo dulu sebelum
 mulai apapun - itu rangkuman status terakhir: redesign 6-fase yang lagi
 jalan, fase mana yang udah kelar, dan keputusan-keputusan yang udah
-diambil biar gak diulang tanya. Remote "origin" = upstream (read-only),
-remote "mine" = papaonta/whatsapp-backup-reader (push target).
+diambil biar gak diulang tanya. Remote "origin" = papaonta/whatsapp-backup-reader (push target),
+remote "upstream" = rodrigogs/whats-reader (read-only).
 ```
 
 ## Current status (as of commit `a24f783`, 2026-08-18, not yet pushed)
@@ -39,7 +39,7 @@ this repo concurrently at one point mid-redesign (Fase 3 landed from a
 separate session while another was mid-conversation) - it was reconciled
 fine (audited, one real bug found and fixed), but if you notice
 commits/HANDOFF.md content you don't recognize, check `git log` and
-`git fetch mine && git log main..mine/main` before assuming something's
+`git fetch origin && git log main..origin/main` before assuming something's
 broken - it may just be another concurrent session's work, already safe.
 
 - **Fase 1 — Persistent chat list (done):** every saved chat now just
@@ -599,11 +599,30 @@ broken - it may just be another concurrent session's work, already safe.
     expansion at all (all under 200 messages, fitting the initial
     render window).
 
+## Log pekerjaan (per tanggal)
+
+### 2026-11-05 - Task 3: bahasa EN + ID, README untuk fork
+
+Owner hanya butuh dua bahasa (English, Bahasa Indonesia), di aplikasi maupun README.
+
+- **i18n** (commit `de577f9`, `feat(i18n): add Indonesian and keep only English and Indonesian`):
+  - `messages/id.json` baru, diterjemahkan manual, semua key `en.json` ada; placeholder utuh. Bentuk plural `{plural}`/`{newPlural}`/`{duplicatePlural}` sengaja tidak dipakai di versi Indonesia (tidak ada plural di bahasa Indonesia).
+  - 9 locale lain dihapus dari `messages/` dan `project.inlang/settings.json` (locales: `en`, `id`); `LocaleSwitcher.svelte` hanya menampilkan English dan Bahasa Indonesia; `electronLanguages` di `package.json` jadi `en`, `en-US`, `id`.
+  - Default locale: strategi Paraglide tetap `localStorage, cookie, preferredLanguage, baseLocale` - bahasa sistem `id*` jadi `id`, selain itu `en`. Locale tersimpan yang sudah dihapus diabaikan (jatuh ke aturan bahasa sistem), tanpa error.
+  - String hardcoded dipindah ke messages (error update/persistence, teks MessageBubble, label biometrik, dll). Key baru ditambahkan ke `en.json` dan `id.json`.
+  - Daftar bahasa transkripsi Whisper (`transcription.svelte.ts`) tetap multi-bahasa (itu bahasa ucapan, bukan bahasa UI); ditambah Bahasa Indonesia.
+- **README** (commit docs bersama entri ini, `docs: rewrite README for fork in English and Indonesian`):
+  - 9 README terjemahan dihapus; `README.md` (EN) dan `README.id.md` (ID) dengan link pindah bahasa.
+  - Referensi rodrigogs diganti ke papaonta/whatsapp-backup-reader; link web demo dan star-history dihapus; paragraf kredit ke upstream dipertahankan.
+  - Daftar fitur memuat fitur custom fork. Screenshot `examples/images/` BELUM diganti: semuanya masih UI lama upstream (Des 2025), sudah diberi catatan di README.
+- Housekeeping: `dist-electron/mac-arm64/` dihapus (gitignored).
+- Aturan baru yang menggantikan konvensi lama: key i18n baru ditambahkan ke **`en.json` dan `id.json`** (bukan hanya en).
+- Belum dikerjakan / sisa: `src/app.html` (og/twitter meta) dan `CONTRIBUTING.md` masih menunjuk ke rodrigogs; `CLAUDE.md` masih menyebut `machine-translate`; tidak ada commit yang di-push.
+
 ## Working conventions established across sessions (don't relitigate)
 
-- New i18n keys: only add to `messages/en.json`. Never hand-translate to
-  the other 9 locales (`npm run machine-translate` exists for that if it's
-  ever actually needed).
+- New i18n keys: add to both `messages/en.json` and `messages/id.json`
+  (only these two locales exist since 2026-11-05; translate id by hand).
 - Never `npx biome` — always `./node_modules/.bin/biome check/format
   --write <files>` directly (bare `npx biome` pulls the wrong version).
 - `npm run check` (svelte-check) does NOT reliably catch every Svelte
@@ -641,6 +660,7 @@ broken - it may just be another concurrent session's work, already safe.
 
 ## Remotes
 
-- `origin` → `rodrigogs/whats-reader` (upstream, read-only for us)
-- `mine` → `papaonta/whatsapp-backup-reader` (private fork, push target),
-  workflow: `git push mine main`.
+- `origin` → `papaonta/whatsapp-backup-reader` (fork kita, push target),
+  workflow: `git push origin main`.
+- `upstream` → `rodrigogs/whats-reader` (read-only: push URL di-set `DISABLED`,
+  `tagOpt` = `--no-tags`). Branch default upstream: `dev`.
