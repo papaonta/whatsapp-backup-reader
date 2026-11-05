@@ -37,6 +37,8 @@
 		"format": "biome format --write .",
 		"electron": "npm run build && electron .",
 		"electron:dev": "concurrently \"npm run dev\" \"wait-on http://localhost:5173 && cross-env NODE_ENV=development electron .\"",
+		"electron:dev:test": "node scripts/electron-test.cjs",
+		"electron:dev:test:fresh": "node scripts/electron-test.cjs --fresh",
 		"electron:build": "npm run build && electron-builder",
 		"electron:build:mac": "npm run build && electron-builder --mac",
 		"electron:build:win": "npm run build && electron-builder --win",
