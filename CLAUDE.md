@@ -24,9 +24,6 @@ npm run lint             # Biome check (NOT ESLint)
 npm run lint:fix         # Auto-fix lint issues
 npm run format           # Format with Biome
 npm run check            # TypeScript + Svelte validation
-
-# i18n
-npm run machine-translate  # Auto-translate with inlang
 ```
 
 ## Architecture
@@ -64,7 +61,7 @@ import * as m from '$lib/paraglide/messages';
 <input placeholder={m.search_placeholder()} />
 ```
 
-To add translations: add key to `messages/en.json`, run `npm run machine-translate`.
+Only two locales exist: `en` and `id` (Bahasa Indonesia). **Every new i18n key MUST be added to both `messages/en.json` AND `messages/id.json`** (translate `id` by hand, keep placeholders identical). Do not use machine-translate.
 
 ### Dual-Target Builds
 

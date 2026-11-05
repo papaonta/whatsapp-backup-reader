@@ -339,5 +339,4 @@ examples/                  # Test data for development
 
 - Svelte 5 Docs: https://svelte.dev/docs/svelte/$state
 - Release Process: `RELEASE.md`
-- Contributing: `CONTRIBUTING.md`
 - Privacy Policy: `README.md` (Privacy & Security section)

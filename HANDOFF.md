@@ -617,7 +617,16 @@ Owner hanya butuh dua bahasa (English, Bahasa Indonesia), di aplikasi maupun REA
   - Daftar fitur memuat fitur custom fork. Screenshot `examples/images/` BELUM diganti: semuanya masih UI lama upstream (Des 2025), sudah diberi catatan di README.
 - Housekeeping: `dist-electron/mac-arm64/` dihapus (gitignored).
 - Aturan baru yang menggantikan konvensi lama: key i18n baru ditambahkan ke **`en.json` dan `id.json`** (bukan hanya en).
-- Belum dikerjakan / sisa: `src/app.html` (og/twitter meta) dan `CONTRIBUTING.md` masih menunjuk ke rodrigogs; `CLAUDE.md` masih menyebut `machine-translate`; tidak ada commit yang di-push.
+- Sisa Task 3 dibereskan di Task 3b (di bawah); tidak ada commit yang di-push.
+
+### 2026-11-05 - Task 3b: istilah ID dan sisa upstream
+
+Commit `chore: polish Indonesian terms and remove upstream leftovers` (hash: lihat `git log`).
+
+- Istilah ID mengikuti WhatsApp Indonesia: judul/menu/rail "Pesan berbintang" (`rail_starred`, `bookmarks_title`, `bookmarks_header_title`); aksi "Beri bintang" (`bookmarks_add`, `bookmarks_add_title`) dan "Hapus bintang".
+- `CONTRIBUTING.md` dihapus beserta referensinya di `.github/copilot-instructions.md`.
+- `src/app.html`: og:url/twitter:url diarahkan ke repo fork; meta gambar (og:image*, twitter:image*) yang host-nya rodrigogs dihapus; `twitter:card` jadi `summary`.
+- `CLAUDE.md`: referensi `machine-translate` dihapus; aturan baru: key i18n wajib ke `en.json` DAN `id.json`.
 
 ## Working conventions established across sessions (don't relitigate)
 
