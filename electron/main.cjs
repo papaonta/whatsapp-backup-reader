@@ -30,6 +30,49 @@ let mainWindow;
 autoUpdater.autoDownload = false; // Manual download control
 autoUpdater.autoInstallOnAppQuit = true; // Install when app quits
 
+// External links: everything http/https/mailto opens in the default browser,
+// any other scheme is dropped, and the app window never navigates away from
+// its own origin. Without this, Electron opens links in a new in-app window
+// that shares the app's session (cookies, service workers and cache from
+// whatever site was opened end up in userData).
+const SAFE_EXTERNAL_PROTOCOLS = new Set(['http:', 'https:', 'mailto:']);
+
+const isSafeExternalUrl = (url) => {
+	try {
+		return SAFE_EXTERNAL_PROTOCOLS.has(new URL(url).protocol);
+	} catch {
+		return false;
+	}
+};
+
+const isInternalUrl = (url) =>
+	url.startsWith('app://localhost') ||
+	(process.env.NODE_ENV === 'development' &&
+		url.startsWith('http://localhost:5173'));
+
+const openExternalIfSafe = (url) => {
+	if (isSafeExternalUrl(url)) {
+		shell.openExternal(url).catch((err) => {
+			console.error('Failed to open external link:', err);
+		});
+	}
+};
+
+app.on('web-contents-created', (_event, contents) => {
+	contents.setWindowOpenHandler(({ url }) => {
+		openExternalIfSafe(url);
+		return { action: 'deny' };
+	});
+
+	const blockNavigation = (event, url) => {
+		if (isInternalUrl(url)) return;
+		event.preventDefault();
+		openExternalIfSafe(url);
+	};
+	contents.on('will-navigate', blockNavigation);
+	contents.on('will-redirect', blockNavigation);
+});
+
 // Get the build directory path
 const getBuildPath = () => {
 	// In production, __dirname is inside the app.asar
