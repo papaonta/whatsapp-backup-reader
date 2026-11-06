@@ -154,6 +154,7 @@
 			"artifactName": "${productName}-${version}-${arch}.${ext}"
 		},
 		"linux": {
+			"maintainer": "papaonta <papaonta@users.noreply.github.com>",
 			"icon": "static/icon.png",
 			"target": [
 				"deb",

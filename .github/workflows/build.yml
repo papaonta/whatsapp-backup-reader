@@ -57,20 +57,17 @@ jobs:
     needs: prebuild
     strategy:
       fail-fast: false
+      # One build per OS family on purpose: two builds of the same OS (x64 +
+      # arm64) would each upload their own latest.yml / latest-mac.yml and
+      # overwrite one another, breaking auto-update. Linux uses per-arch names.
       matrix:
         include:
           - os: macos-14
             platform: mac-arm64
             arch: arm64
-          - os: macos-14
-            platform: mac-x64
-            arch: x64
           - os: windows-latest
             platform: win-x64
             arch: x64
-          - os: windows-latest
-            platform: win-arm64
-            arch: arm64
           - os: ubuntu-latest
             platform: linux-x64
             arch: x64
@@ -185,29 +182,47 @@ jobs:
           echo "version=$VERSION" >> $GITHUB_OUTPUT
         shell: bash
 
-      - name: Publish Draft Release
+      - name: Verify assets and publish the release
         uses: actions/github-script@v8
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
+            const tag = '${{ steps.version.outputs.version }}';
             const { data: releases } = await github.rest.repos.listReleases({
               owner: context.repo.owner,
               repo: context.repo.repo,
+              per_page: 50,
             });
-            
-            const draftRelease = releases.find(r => r.tag_name === '${{ steps.version.outputs.version }}' && r.draft);
-            
-            if (draftRelease) {
-              await github.rest.repos.updateRelease({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                release_id: draftRelease.id,
-                draft: false
-              });
-              console.log(`✅ Published release ${draftRelease.tag_name}`);
-            } else {
-              console.log('⚠️ No draft release found for ${{ steps.version.outputs.version }}');
+            const release = releases.find(r => r.tag_name === tag);
+            if (!release) {
+              core.setFailed(`No release found for ${tag}`);
+              return;
             }
+            if (!release.draft) {
+              console.log(`Release ${tag} is already published`);
+              return;
+            }
+            // The release only goes public when every required file is attached.
+            const names = release.assets.map(a => a.name);
+            const required = [
+              ['Windows installer (.exe)', /-Setup-.*-x64\.exe$/],
+              ['Mac Apple Silicon DMG', /-arm64\.dmg$/],
+              ['Windows auto-update metadata (latest.yml)', /^latest\.yml$/],
+              ['Mac auto-update metadata (latest-mac.yml)', /^latest-mac\.yml$/],
+            ];
+            const missing = required.filter(([, re]) => !names.some(n => re.test(n)));
+            if (missing.length > 0) {
+              core.setFailed(`Release ${tag} stays a draft. Missing: ${missing.map(m => m[0]).join(', ')}. Assets present: ${names.join(', ')}`);
+              return;
+            }
+            await github.rest.repos.updateRelease({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              release_id: release.id,
+              draft: false,
+              make_latest: 'true',
+            });
+            console.log(`Published release ${tag} with ${names.length} assets`);
 
       - name: Sync main to dev
         continue-on-error: true
@@ -266,6 +281,7 @@ jobs:
             }
 
       - name: Trigger Deploy Workflow
+        continue-on-error: true
         uses: actions/github-script@v8
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
@@ -277,44 +293,15 @@ jobs:
               ref: 'main'
             })
 
-  cleanup-failed-release:
-    name: Cleanup Failed Release
+  # A failed build leaves the draft release (and whatever was uploaded) in place
+  # for inspection. It stays private and is never published automatically.
+  # Fix the cause, then re-run the Build workflow with the same version.
+  report-failed-release:
+    name: Report Failed Release
     runs-on: ubuntu-latest
     needs: build
     if: failure() || cancelled()
     steps:
-      - name: Get version from input
-        id: version
+      - name: Explain
         run: |
-          if [ "${{ github.event_name }}" = "release" ]; then
-            VERSION="${{ github.event.release.tag_name }}"
-          elif [ "${{ github.event_name }}" = "push" ]; then
-            VERSION="${GITHUB_REF#refs/tags/}"
-          else
-            VERSION="v${{ inputs.version }}"
-          fi
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-        shell: bash
-
-      - name: Delete Draft Release
-        uses: actions/github-script@v8
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          script: |
-            const { data: releases } = await github.rest.repos.listReleases({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-            });
-            
-            const draftRelease = releases.find(r => r.tag_name === '${{ steps.version.outputs.version }}' && r.draft);
-            
-            if (draftRelease) {
-              await github.rest.repos.deleteRelease({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                release_id: draftRelease.id
-              });
-              console.log(`🗑️ Deleted failed draft release ${draftRelease.tag_name}`);
-            } else {
-              console.log('⚠️ No draft release found to delete for ${{ steps.version.outputs.version }}');
-            }
+          echo "::error::A platform build failed. The release stays a DRAFT and was not published. Check the failed job, fix it, then re-run the Build workflow with the same version."
