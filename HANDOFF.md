@@ -39,7 +39,19 @@ remote "upstream" = rodrigogs/whats-reader (read-only).
 - **Data chat** = isi folder `extracted-chats` (hasil ekstrak ZIP: transkrip + media). Inilah yang bisa dipindah lokasinya.
 - **Database app** = IndexedDB/localStorage di `userData` (daftar chat, PIN, pesan berbintang, pengaturan). **Tidak** dipindah.
 - **Penyimpanan chat / lokasi penyimpanan chat** = folder tempat data chat berada (default `userData/extracted-chats`, atau folder pilihan owner). Di kode: `chat-storage` (`electron/lib/chat-storage.cjs`, `src/lib/chat-storage.svelte.ts`).
+- **WBR** = singkatan nama app (WhatsApp Backup Reader). Nama app dan `productName` **TIDAK boleh diganti** tanpa task migrasi folder data (folder `userData` dinamai dari nama app; mengganti nama membuat app tidak menemukan database dan data chat lama).
 - **Arsipkan chat** (`settings.archived`, menu "Chat diarsipkan") = fitur menyembunyikan chat dari daftar utama. **Tidak berhubungan** dengan penyimpanan chat; kata "archive/arsip" tidak dipakai untuk fitur lokasi.
+
+## Backlog
+
+Belum dikerjakan; urutan bukan prioritas.
+
+- **a.** Tombol "Buka Cryptomator" di banner "penyimpanan chat tidak tersedia".
+- **b.** Rilis publik: rilis lama kemungkinan berstatus draft (badge README "no releases"), dan badge CI "no status".
+- **c.** Upgrade Electron dan dependency (audit: 1 critical, 18 high).
+- **d.** Fase berbagi ke teman: Cryptomator tetap opsional, panduan peringatan SmartScreen/Gatekeeper, pertimbangan nama tanpa kata "WhatsApp".
+- **e.** Bersih-bersih: skrip `machine-translate` (di `package.json`) dan `.github/copilot-instructions.md`.
+- **f.** Kandidat jangka panjang: enkripsi bawaan app.
 
 ## Riwayat redesain 6 fase (status per 2026-08-18 commit `a24f783`, tidak diperbarui)
 
@@ -691,6 +703,16 @@ Commit lokal (BELUM di-push): `feat: add chat storage location (move, reconnect,
 - **Bug ditemukan lewat tes:** efek di `+page.svelte` yang memanggil `chatStorageState.start()` ikut melacak status → loop cek ulang (tombol "Coba lagi" terus nonaktif). Diperbaiki dengan `untrack`.
 - **Tes:** `scripts/e2e/07-chat-storage-location.cjs` (40 cek: migrasi, brankas terkunci + dibuka lagi lewat fokus dan tombol, path kustom tak ada → tidak ada mkdir, storageId salah, installId lain, pindah + kembalikan default, gagal di tengah, batal, hubungkan ulang). Tes 04/05 disesuaikan aturan baru (chat abu-abu saat penyimpanan tak tersedia tidak lagi membuka modal ekstrak ulang; modal tetap ada bila hanya folder satu chat yang hilang; folder penyimpanan kini berisi file penanda).
 - **Khusus Windows, belum teruji** (semua tes di Mac): huruf drive WinFsp/Cryptomator dan `statfs` pada drive virtual (bila gagal, cek ruang dilewati); perbandingan path tidak peka huruf besar/kecil dan path UNC; file penanda berawalan titik di Windows; tes gagal-pindah memakai `chmod` (tidak berlaku di Windows); `realpath` untuk drive virtual; perilaku saat drive hilang di tengah penyalinan.
+
+### 2026-11-06 - Task 4d: tambahan setelah review 4c
+
+Task 4c sudah di-push (`caf128f..d55c827`). Keputusan owner: storageId baru setelah pindah TETAP (salinan lama tidak bisa tersambung lagi lewat "Hubungkan").
+
+- **Folder default hilang total:** tetap tidak dibuat otomatis. Banner menampilkan tombol "Buat folder baru di lokasi default" (hanya bila root = default dan folder memang tidak ada) dengan konfirmasi yang menjelaskan chat lama tetap "Tap to reopen". Aksi: `mkdir` non-rekursif + penanda dengan identitas (storageId/installId) yang sama. Instalasi baru (tanpa folder dan config) langsung normal tanpa banner (dites).
+- **Config rusak:** `chat-storage.json` sudah ditulis atomik (tmp + rename). Bila tidak terbaca: salinan disimpan sebagai `chat-storage.json.corrupt` (tidak menimpa salinan lama; file asli dibiarkan), status tidak tersedia dengan pesan khusus, dan aksi "Pulihkan dari penanda…": pilih folder, konfirmasi, lalu storageId + installId diadopsi dari penanda. Tanpa menyalin atau menghapus.
+- **Merge/impor/hapus/backup terkunci:** merge sudah mati untuk penanda installId lain (canWrite=false) dan kini dites dengan chat terbuka. Selama "Pindahkan" berjalan, tombol-tombol itu mati langsung di UI (`chatStorageState.setMoving`) dan main process menolak ekstrak/merge/hapus ("sedang dipindah"); dites dengan file sparse 8 GB lalu dibatalkan.
+- **Tes 02 (PIN) yang gagal sekali:** penyebab lingkungan uji, bukan bug app. Dev server Vite me-reload halaman penuh saat file APA PUN di repo berubah (terbukti dengan menyentuh `HANDOFF.md`); saat run pertama saya mengedit HANDOFF.md/README, reload terjadi di tengah impor, app terkunci ulang karena PIN aktif dan impor terputus (gate=1, records=0). Perbaikan: `server.watch.ignored` di `vite.config.ts` untuk `*.md`, `scripts/`, `build/`, `dist-electron/`, `examples/`. Aturan praktis: jangan mengedit `src/` atau `electron/` saat `test:e2e` berjalan.
+- **Tes:** `08-chat-storage-recovery` baru; helper bersama di `scripts/e2e/storage-helpers.cjs` (dipakai 07 dan 08).
 
 ## Working conventions established across sessions (don't relitigate)
 
