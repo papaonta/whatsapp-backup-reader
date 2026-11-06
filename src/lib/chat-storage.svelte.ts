@@ -31,6 +31,9 @@ function createChatStorageState() {
 
 	let status = $state<ChatStorageStatus | null>(null);
 	let checking = $state(false);
+	// True from the moment a move is started here until it ends, so the other
+	// buttons are off immediately (the main process refuses writes meanwhile).
+	let localMoving = $state(false);
 	const readableListeners = new Set<() => void>();
 
 	async function refresh(): Promise<ChatStorageStatus | null> {
@@ -84,11 +87,14 @@ function createChatStorageState() {
 		},
 		/** Importing / deleting / merging / backing up / moving is allowed. */
 		get canWrite() {
-			return !api || status?.canWrite === true;
+			return !api || (status?.canWrite === true && !localMoving);
 		},
 		/** Show a banner (anything but "ok"). Unknown yet = no banner. */
 		get problem() {
 			return api && status && status.state !== 'ok' ? status.state : null;
+		},
+		setMoving(value: boolean) {
+			localMoving = value;
 		},
 		refresh,
 		start,

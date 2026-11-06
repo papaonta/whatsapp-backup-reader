@@ -128,6 +128,7 @@ async function confirmMove() {
 	const current = plan;
 	plan = null;
 	busy = 'moving';
+	chatStorageState.setMoving(true);
 	progress = {
 		bytesDone: 0,
 		totalBytes: current.totalBytes,
@@ -146,6 +147,7 @@ async function confirmMove() {
 		current.toDefault ? { toDefault: true } : { dir: current.dir },
 	);
 	off();
+	chatStorageState.setMoving(false);
 	busy = 'idle';
 	progress = null;
 	if (result.success) {
