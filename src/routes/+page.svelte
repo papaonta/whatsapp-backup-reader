@@ -54,7 +54,7 @@ let chatFileReferences = $state<
 
 <script lang="ts">
 import JSZip from 'jszip';
-import { tick } from 'svelte';
+import { tick, untrack } from 'svelte';
 import { browser } from '$app/environment';
 import favicon from '$lib/assets/favicon.png';
 import { getAutoUpdaterState, initAutoUpdater } from '$lib/auto-updater.svelte';
@@ -88,6 +88,7 @@ import LocaleSwitcher from '$lib/components/LocaleSwitcher.svelte';
 import LockedChatPane from '$lib/components/LockedChatPane.svelte';
 import LockPinModal from '$lib/components/LockPinModal.svelte';
 import MediaGallery from '$lib/components/MediaGallery.svelte';
+import ChatStorageBanner from '$lib/components/ChatStorageBanner.svelte';
 import MergeChatsModal from '$lib/components/MergeChatsModal.svelte';
 import OnThisDayBanner from '$lib/components/OnThisDayBanner.svelte';
 import ReextractModal from '$lib/components/ReextractModal.svelte';
@@ -117,6 +118,7 @@ import {
 	isMobileViewport,
 } from '$lib/helpers/responsive';
 import { appLockState } from '$lib/app-lock.svelte';
+import { chatStorageState } from '$lib/chat-storage.svelte';
 import * as m from '$lib/paraglide/messages';
 import { getLocale } from '$lib/paraglide/runtime';
 import {
@@ -487,7 +489,17 @@ function makeProgressCallback(loadingId: string) {
 	};
 }
 
+// Chat storage (the extracted-chats folder) must be available for anything that
+// writes to it: import, delete, merge, backup, re-extract. If it isn't, nothing
+// is attempted and the user is told nothing was changed.
+function storageBlocked(): boolean {
+	if (chatStorageState.canWrite) return false;
+	showToast(m.chat_storage_blocked_toast(), 'error');
+	return true;
+}
+
 async function handleSidebarImport() {
+	if (storageBlocked()) return;
 	if (window.electronAPI) {
 		const result = await openElectronFile();
 		if (result) {
@@ -509,6 +521,7 @@ async function handleFilesSelected(
 	handles?: FileSystemFileHandle[],
 	paths?: string[],
 ) {
+	if (storageBlocked()) return;
 	appState.clearError();
 
 	let handleIndex = 0;
@@ -825,6 +838,7 @@ function cleanUpChatState(title: string) {
 // removePersistedChat) and closes it if currently open. Gated behind a
 // confirm step (see ConfirmDeleteChatModal) since it's destructive.
 function requestDeleteChat(index: number) {
+	if (storageBlocked()) return;
 	const chat = appState.chats[index];
 	if (!chat) return;
 	deleteChatTarget = { chat };
@@ -836,6 +850,10 @@ function cancelDeleteChat() {
 
 async function confirmDeleteChat() {
 	if (!deleteChatTarget) return;
+	if (storageBlocked()) {
+		deleteChatTarget = null;
+		return;
+	}
 	const { chat } = deleteChatTarget;
 	deleteChatTarget = null;
 
@@ -1118,6 +1136,7 @@ let backupProgress = $state(0);
 let showBackupConfirm = $state(false);
 
 function requestBackupChatAsZip() {
+	if (storageBlocked()) return;
 	showBackupConfirm = true;
 }
 
@@ -1203,6 +1222,7 @@ async function handleBackupChatAsZip() {
 // Keeps auto-lock paused for the whole merge (it re-reads media and writes a
 // new extraction folder, which can take a while with no user activity).
 async function handleMergeChats(otherChats: ChatData[], mergedTitle: string) {
+	if (storageBlocked()) return;
 	const releaseLock = appLockState.suspend();
 	try {
 		await runMergeChats(otherChats, mergedTitle);
@@ -1402,6 +1422,34 @@ $effect(() => {
 			console.error('Failed to check for persisted chats:', e);
 		}
 	})();
+});
+
+// Chat storage status: re-checked when the window gets focus; when it becomes
+// readable again (vault unlocked / drive back) the chats that were greyed out
+// are restored without any extraction.
+async function restoreChatsAfterStorageReturns() {
+	const pending = chatsNeedingReselect.filter(
+		(c) => c.fileReference.type === 'electron-extracted',
+	);
+	if (pending.length === 0) return;
+	chatsNeedingReselect = chatsNeedingReselect.filter(
+		(c) => c.fileReference.type !== 'electron-extracted',
+	);
+	await handleRestoreChats(pending);
+}
+
+$effect(() => {
+	if (!browser) return;
+	// untrack: start() reads and writes the status; tracking it here would
+	// re-run this effect (and re-check) in a loop.
+	const stop = untrack(() => chatStorageState.start());
+	const off = chatStorageState.onBecameReadable(() => {
+		restoreChatsAfterStorageReturns();
+	});
+	return () => {
+		stop();
+		off();
+	};
 });
 
 // Keep every loaded chat's persisted bookmarks in sync with
@@ -1650,6 +1698,8 @@ async function handleOpenReselectChat(persistedChat: PersistedChatMetadata) {
 		persistedChat.fileReference.type === 'electron-extracted' &&
 		window.electronAPI?.extraction
 	) {
+		// Re-extracting writes to the chat storage: not while it is unavailable.
+		if (storageBlocked()) return;
 		await openReextract(persistedChat);
 		return;
 	}
@@ -2369,6 +2419,7 @@ async function handleForgotPin() {
 								theme="light"
 								size="lg"
 								onclick={handleSidebarImport}
+								disabled={!chatStorageState.canWrite}
 								aria-label={m.import_chat()}
 								title={m.import_chat()}
 							>
@@ -2425,6 +2476,8 @@ async function handleForgotPin() {
 						multiple
 					/>
 				</div>
+
+				<ChatStorageBanner />
 
 				<!-- Chat list -->
 				<div class="flex-1 overflow-hidden">
@@ -2630,6 +2683,7 @@ async function handleForgotPin() {
 											<span>{m.export_chat()}</span>
 										</ListItemButton>
 										<ListItemButton
+											disabled={!chatStorageState.canWrite}
 											onclick={() => {
 												showChatOptionsDropdown = false;
 												requestBackupChatAsZip();
@@ -2639,6 +2693,7 @@ async function handleForgotPin() {
 											<span>{m.chat_backup_zip()}</span>
 										</ListItemButton>
 										<ListItemButton
+											disabled={!chatStorageState.canWrite}
 											onclick={() => {
 												showChatOptionsDropdown = false;
 												showMergeChatsModal = true;
@@ -2751,7 +2806,7 @@ async function handleForgotPin() {
 								size="md"
 								class="relative"
 								onclick={requestBackupChatAsZip}
-								disabled={isBackingUpChat}
+								disabled={isBackingUpChat || !chatStorageState.canWrite}
 								aria-busy={isBackingUpChat}
 								title={isBackingUpChat ? m.chat_backup_preparing({ progress: backupProgress }) : m.chat_backup_zip()}
 								aria-label={m.chat_backup_zip()}
@@ -2767,6 +2822,7 @@ async function handleForgotPin() {
 								theme="dark"
 								size="md"
 								onclick={() => (showMergeChatsModal = true)}
+								disabled={!chatStorageState.canWrite}
 								title={m.merge_chats_action()}
 								aria-label={m.merge_chats_action()}
 							>

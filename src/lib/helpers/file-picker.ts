@@ -40,6 +40,21 @@ export async function openElectronFile(): Promise<{
 }
 
 /**
+ * Open Electron's native folder dialog (e.g. to pick the chat storage
+ * location). Keeps auto-lock paused while the dialog is open, same as
+ * openElectronFile. Returns null when cancelled or not in Electron.
+ */
+export async function openElectronFolder(): Promise<string | null> {
+	if (!window.electronAPI) return null;
+	const release = appLockState.suspend();
+	try {
+		return await window.electronAPI.openFolder();
+	} finally {
+		release();
+	}
+}
+
+/**
  * Opens a web <input type="file"> dialog while keeping auto-lock paused. The
  * pause ends on `change`, `cancel`, or (as a fallback for browsers without a
  * `cancel` event) shortly after the window regains focus, with a hard upper

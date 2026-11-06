@@ -79,7 +79,7 @@ const text = async (page) => (await page.locator('body').innerText()).replace(/\
 	await app.close();
 	await sleep(1000);
 
-	// ---- locked vault
+	// ---- locked vault (the whole storage folder is gone)
 	fs.renameSync(R, `${R}.LOCKED`);
 	({ app, page } = await launch(P));
 	let seen = '';
@@ -95,13 +95,26 @@ const text = async (page) => (await page.locator('body').innerText()).replace(/\
 	ok('vault: nothing deleted - record + star intact, locked folder untouched', r.length === 1 && r[0].stars === 1 && fs.existsSync(`${R}.LOCKED/${r[0].dir}/manifest.json`));
 	ok('vault: no new folders in the profile', JSON.stringify(fs.readdirSync(P).filter((n) => /extract/i.test(n))) === JSON.stringify(['extracted-chats.LOCKED']));
 	ok('vault: chat shows "Tap to reopen" + explanatory toast', /Tap to reopen/.test(body) && /Nothing was changed or deleted/.test(seen));
+	ok('vault: banner "chat storage not available" is shown', /Chat storage is not available \(vault locked\?\)/.test(body));
+	await page.getByText('Tap to reopen').first().click();
+	await sleep(1200);
+	ok('vault: clicking the greyed chat does NOT offer re-extraction', !/Re-extracting will write about/.test(await text(page)) && !fs.existsSync(R));
+	const dir = r[0].dir;
+	await app.close();
+	await sleep(1000);
+
+	// ---- only this chat's folder is missing (storage itself is fine)
+	fs.renameSync(`${R}.LOCKED`, R);
+	fs.renameSync(`${R}/${dir}`, `${R}/${dir}.MISSING`);
+	({ app, page } = await launch(P));
+	await sleep(6000);
 	await page.getByText('Tap to reopen').first().click();
 	await sleep(1500);
 	const modal = await text(page);
-	ok('vault: manual modal explains, shows ZIP + size, extracts nothing', /Storage folder not available/.test(modal) && /Original ZIP found/.test(modal) && /Re-extracting will write about/.test(modal) && !fs.existsSync(R));
+	ok('missing chat folder: manual modal explains, shows ZIP + size, extracts nothing', /Storage folder not available/.test(modal) && /Original ZIP found/.test(modal) && /Re-extracting will write about/.test(modal) && !fs.existsSync(`${R}/${dir}`));
 	await page.getByRole('button', { name: 'Cancel' }).first().click();
 	await sleep(800);
-	ok('vault: cancel -> still nothing created', !fs.existsSync(R));
+	ok('missing chat folder: cancel -> still nothing created', !fs.existsSync(`${R}/${dir}`));
 
 	// ---- Update of a chat that is not restored keeps its stars
 	await stubDialog(app);

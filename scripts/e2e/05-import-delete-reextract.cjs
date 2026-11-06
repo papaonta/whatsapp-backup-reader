@@ -89,16 +89,28 @@ const clickDeleteChat = async (page) => {
 	ok('regression: cancelled extraction leaves no folder', c.cancelled === true && !fs.existsSync(`${R}/cancel-test-1`));
 
 	fs.renameSync(R, `${R}.LOCKED`);
-	await clickDeleteChat(page);
+	// The main process refuses on its own, even if the UI hasn't noticed yet.
+	const del = await page.evaluate((id) => window.electronAPI.extraction.deleteDir(id), r[0].dir);
 	r = await records(page);
 	ok(
 		'regression: Delete Chat refused while storage is unavailable (record kept, nothing created)',
-		r.length === 1 && /Nothing was deleted/.test(await text(page)) && !fs.existsSync(R) && fs.existsSync(`${R}.LOCKED/${r[0].dir}`),
+		del.success === false && del.unavailable === true && r.length === 1 && !fs.existsSync(R) && fs.existsSync(`${R}.LOCKED/${r[0].dir}`),
 	);
+	// Once the window notices (focus re-check), the menu item is disabled.
+	await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+	await sleep(1000);
+	await openChatMenu(page);
+	await sleep(1200);
+	const disabled = await page.evaluate(() => [...document.querySelectorAll('button')].find((x) => x.innerText.trim() === 'Delete Chat')?.disabled);
+	ok('regression: Delete Chat menu item is disabled while storage is unavailable', disabled === true);
+	await page.keyboard.press('Escape');
+	await page.mouse.click(5, 5);
 	fs.renameSync(`${R}.LOCKED`, R);
+	await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+	await sleep(1500);
 	await clickDeleteChat(page);
 	r = await records(page);
-	ok('regression: Delete Chat with storage available removes record + folder', r.length === 0 && fs.readdirSync(R).length === 0);
+	ok('regression: Delete Chat with storage available removes record + folder', r.length === 0 && fs.readdirSync(R).filter((n) => !n.startsWith('.')).length === 0);
 
 	// Manual re-extract after an explicit click.
 	await page.getByText('click to browse').first().click();
@@ -107,7 +119,9 @@ const clickDeleteChat = async (page) => {
 	const dir = r[0].dir;
 	await app.close();
 	await sleep(1000);
-	fs.renameSync(R, `${R}.LOCKED`);
+	// Only this chat's folder is missing; the storage itself is available, so a
+	// manual re-extract is allowed (and only after the explicit click).
+	fs.renameSync(`${R}/${dir}`, `${R}/${dir}.MISSING`);
 	({ app, page } = await launch(P));
 	await sleep(5000);
 	await page.getByText('Tap to reopen').first().click();

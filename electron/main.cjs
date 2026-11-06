@@ -12,7 +12,6 @@ const { autoUpdater } = require('electron-updater');
 const path = require('node:path');
 const fs = require('node:fs');
 const {
-	getExtractionRoot,
 	isValidExtractionId,
 	extractZipToDirectory,
 	createMergedChatFolder,
@@ -26,7 +25,19 @@ const {
 	buildMediaFileResponse,
 } = require('./lib/extract-zip.cjs');
 
+const { createChatStorage } = require('./lib/chat-storage.cjs');
+
 let mainWindow;
+
+// Where the extracted chat data lives and whether it can be trusted right now
+// (see electron/lib/chat-storage.cjs). The only source of the storage path.
+const chatStorage = createChatStorage(app.getPath('userData'), {
+	isBusy: () => activeExtractions.size > 0,
+});
+const getChatStorageRoot = () => chatStorage.getRoot();
+
+const isStorageUnavailableError = (error) =>
+	error?.code === 'CHAT_STORAGE_UNAVAILABLE';
 
 // Configure auto-updater
 autoUpdater.autoDownload = false; // Manual download control
@@ -184,6 +195,12 @@ app.whenReady().then(async () => {
 		console.error('Failed to clear leftover site data:', err);
 	});
 
+	// Before any window exists: first-run / upgrade marker for the default
+	// location only. A custom location is never touched here.
+	await chatStorage.init().catch((err) => {
+		console.error('Failed to initialise chat storage:', err);
+	});
+
 	// Register protocol handler for 'app://' scheme
 	protocol.handle('app', async (request) => {
 		// Parse the URL to get just the pathname
@@ -243,8 +260,16 @@ app.whenReady().then(async () => {
 		const extractionId = requestUrl.hostname;
 		const relPath = decodeURIComponent(requestUrl.pathname.replace(/^\/+/, ''));
 
+		let storage = chatStorage.getLastStatus();
+		if (!storage || Date.now() - storage.checkedAt > 3000) {
+			storage = await chatStorage.getStatus();
+		}
+		if (!storage.canRead) {
+			return new Response('Not Found', { status: 404 });
+		}
+
 		const resolved = await resolveMediaFilePath(
-			getExtractionRoot(app),
+			getChatStorageRoot(),
 			extractionId,
 			relPath,
 		);
@@ -412,11 +437,13 @@ ipcMain.handle(
 			if (!isValidExtractionId(extractionId)) {
 				return { success: false, error: 'Invalid extraction id' };
 			}
+			// Nothing is extracted (or created) unless the storage is available.
+			await chatStorage.requireWritable();
 
 			const result = await extractZipToDirectory({
 				zipPath: normalized,
 				extractionId,
-				extractionRoot: getExtractionRoot(app),
+				extractionRoot: getChatStorageRoot(),
 				signal: controller.signal,
 				onProgress: (progress) => {
 					if (mainWindow && !mainWindow.isDestroyed()) {
@@ -433,6 +460,7 @@ ipcMain.handle(
 			return {
 				success: false,
 				cancelled: controller.signal.aborted,
+				unavailable: isStorageUnavailableError(error),
 				error: error instanceof Error ? error.message : String(error),
 			};
 		} finally {
@@ -468,6 +496,7 @@ ipcMain.handle(
 			if (!isValidExtractionId(extractionId)) {
 				throw new Error('Invalid extraction id');
 			}
+			await chatStorage.requireWritable();
 			if (
 				typeof chatFileName !== 'string' ||
 				chatFileName.length === 0 ||
@@ -492,7 +521,7 @@ ipcMain.handle(
 			}
 
 			const result = await createMergedChatFolder({
-				extractionRoot: getExtractionRoot(app),
+				extractionRoot: getChatStorageRoot(),
 				extractionId,
 				chatFileName,
 				chatText,
@@ -503,6 +532,7 @@ ipcMain.handle(
 		} catch (error) {
 			return {
 				success: false,
+				unavailable: isStorageUnavailableError(error),
 				error: error instanceof Error ? error.message : String(error),
 			};
 		}
@@ -516,8 +546,15 @@ ipcMain.handle(
 // (if anything) to offer, and only after the user confirms.
 ipcMain.handle('extraction:loadManifest', async (_event, extractionId) => {
 	try {
+		if (!(await chatStorage.getStatus()).canRead) {
+			return {
+				success: false,
+				unavailable: true,
+				error: 'Chat storage is not available',
+			};
+		}
 		const result = await loadExtractionManifest(
-			getExtractionRoot(app),
+			getChatStorageRoot(),
 			extractionId,
 		);
 		return { success: true, ...result };
@@ -532,14 +569,16 @@ ipcMain.handle('extraction:loadManifest', async (_event, extractionId) => {
 
 ipcMain.handle('extraction:deleteDir', async (_event, extractionId) => {
 	try {
+		await chatStorage.requireWritable();
 		const result = await deleteExtractionDir(
-			getExtractionRoot(app),
+			getChatStorageRoot(),
 			extractionId,
 		);
 		return { success: !result.unavailable, ...result };
 	} catch (error) {
 		return {
 			success: false,
+			unavailable: isStorageUnavailableError(error),
 			error: error instanceof Error ? error.message : String(error),
 		};
 	}
@@ -552,14 +591,16 @@ ipcMain.handle('extraction:listOrphans', async (_event, keepExtractionIds) => {
 		if (!Array.isArray(keepExtractionIds)) {
 			throw new Error('Invalid keep list');
 		}
+		await chatStorage.requireWritable();
 		const result = await listOrphanedExtractions(
-			getExtractionRoot(app),
+			getChatStorageRoot(),
 			keepExtractionIds,
 		);
 		return { success: true, ...result };
 	} catch (error) {
 		return {
 			success: false,
+			unavailable: isStorageUnavailableError(error),
 			error: error instanceof Error ? error.message : String(error),
 		};
 	}
@@ -572,8 +613,9 @@ ipcMain.handle(
 			if (!Array.isArray(ids) || !Array.isArray(keepExtractionIds)) {
 				throw new Error('Invalid arguments');
 			}
+			await chatStorage.requireWritable();
 			const result = await deleteOrphanedExtractions(
-				getExtractionRoot(app),
+				getChatStorageRoot(),
 				ids,
 				keepExtractionIds,
 			);
@@ -581,6 +623,7 @@ ipcMain.handle(
 		} catch (error) {
 			return {
 				success: false,
+				unavailable: isStorageUnavailableError(error),
 				error: error instanceof Error ? error.message : String(error),
 			};
 		}
@@ -589,11 +632,68 @@ ipcMain.handle(
 
 ipcMain.handle('extraction:getStorageUsage', async () => {
 	try {
-		const bytes = await getDirectorySize(getExtractionRoot(app));
+		if (!(await chatStorage.getStatus()).canRead) {
+			return {
+				success: false,
+				unavailable: true,
+				error: 'Chat storage is not available',
+			};
+		}
+		const bytes = await getDirectorySize(getChatStorageRoot());
 		return { success: true, bytes };
 	} catch (error) {
 		return {
 			success: false,
+			error: error instanceof Error ? error.message : String(error),
+		};
+	}
+});
+
+// Chat storage location (Settings → Storage). Chat data only.
+ipcMain.handle('chatStorage:getStatus', async () => chatStorage.getStatus());
+
+ipcMain.handle('chatStorage:planMove', async (_event, options) => {
+	try {
+		return await chatStorage.planMove({
+			toDefault: options?.toDefault === true,
+			dir: options?.dir,
+		});
+	} catch (error) {
+		return {
+			success: false,
+			reason: 'error',
+			error: error instanceof Error ? error.message : String(error),
+		};
+	}
+});
+
+ipcMain.handle('chatStorage:move', async (_event, options) => {
+	try {
+		return await chatStorage.move(
+			{ toDefault: options?.toDefault === true, dir: options?.dir },
+			(progress) => {
+				if (mainWindow && !mainWindow.isDestroyed()) {
+					mainWindow.webContents.send('chatStorage:moveProgress', progress);
+				}
+			},
+		);
+	} catch (error) {
+		return {
+			success: false,
+			error: error instanceof Error ? error.message : String(error),
+		};
+	}
+});
+
+ipcMain.handle('chatStorage:cancelMove', async () => chatStorage.cancelMove());
+
+ipcMain.handle('chatStorage:reconnect', async (_event, dir) => {
+	try {
+		return await chatStorage.reconnect(dir);
+	} catch (error) {
+		return {
+			success: false,
+			reason: 'error',
 			error: error instanceof Error ? error.message : String(error),
 		};
 	}

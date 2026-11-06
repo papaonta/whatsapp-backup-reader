@@ -15,6 +15,23 @@ contextBridge.exposeInMainWorld('electronAPI', {
 	readFileFromPath: (filePath) =>
 		ipcRenderer.invoke('file:readFromPath', filePath),
 
+	// Chat storage location: where the extracted chat data lives, whether it is
+	// available, and moving / reconnecting it (chat data only, never the app
+	// database).
+	chatStorage: {
+		getStatus: () => ipcRenderer.invoke('chatStorage:getStatus'),
+		planMove: (options) => ipcRenderer.invoke('chatStorage:planMove', options),
+		move: (options) => ipcRenderer.invoke('chatStorage:move', options),
+		cancelMove: () => ipcRenderer.invoke('chatStorage:cancelMove'),
+		reconnect: (dir) => ipcRenderer.invoke('chatStorage:reconnect', dir),
+		onMoveProgress: (callback) => {
+			const subscription = (_event, data) => callback(data);
+			ipcRenderer.on('chatStorage:moveProgress', subscription);
+			return () =>
+				ipcRenderer.removeListener('chatStorage:moveProgress', subscription);
+		},
+	},
+
 	// Clears cookies, service workers and Cache Storage only
 	clearSiteData: () => ipcRenderer.invoke('siteData:clear'),
 

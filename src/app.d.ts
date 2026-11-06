@@ -65,11 +65,71 @@ interface MergedChatMediaEntry {
 	bytes: ArrayBuffer;
 }
 
+interface ChatStorageStatusInfo {
+	state: 'ok' | 'unavailable' | 'foreign' | 'other-install';
+	reason: string | null;
+	root: string;
+	defaultRoot: string;
+	isDefault: boolean;
+	canRead: boolean;
+	canWrite: boolean;
+	moving: boolean;
+}
+
+interface ChatStorageMoveOptions {
+	toDefault?: boolean;
+	dir?: string;
+}
+
+interface ChatStoragePlanResult {
+	success: boolean;
+	reason?: string;
+	error?: string;
+	destination?: string;
+	source?: string;
+	chatCount?: number;
+	fileCount?: number;
+	totalBytes?: number;
+	freeBytes?: number | null;
+}
+
+interface ChatStorageMoveResult {
+	success: boolean;
+	cancelled?: boolean;
+	reason?: string;
+	error?: string;
+	oldRoot?: string;
+	newRoot?: string;
+	chatCount?: number;
+	bytes?: number;
+}
+
+interface ChatStorageMoveProgress {
+	bytesDone: number;
+	totalBytes: number;
+	chatCount: number;
+	chatIndex?: number;
+}
+
 interface ElectronAPI {
 	openFile: () => Promise<FileResult | null>;
 	openFolder: () => Promise<string | null>;
 	fileExists: (filePath: string) => Promise<boolean>;
 	fileSize: (filePath: string) => Promise<number | null>;
+	chatStorage: {
+		getStatus: () => Promise<ChatStorageStatusInfo>;
+		planMove: (
+			options: ChatStorageMoveOptions,
+		) => Promise<ChatStoragePlanResult>;
+		move: (options: ChatStorageMoveOptions) => Promise<ChatStorageMoveResult>;
+		cancelMove: () => Promise<{ success: boolean }>;
+		reconnect: (
+			dir: string,
+		) => Promise<{ success: boolean; reason?: string; error?: string }>;
+		onMoveProgress: (
+			callback: (progress: ChatStorageMoveProgress) => void,
+		) => () => void;
+	};
 	clearSiteData: () => Promise<{ success: boolean; error?: string }>;
 	readFileFromPath: (filePath: string) => Promise<FileReadResult>;
 	openExternal: (url: string) => Promise<void>;

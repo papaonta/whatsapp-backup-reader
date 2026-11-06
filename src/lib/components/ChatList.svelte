@@ -1,5 +1,6 @@
 <script lang="ts">
 import { floating } from '$lib/actions/floating';
+import { chatStorageState } from '$lib/chat-storage.svelte';
 import { formatRelativeDate } from '$lib/helpers/format';
 import * as m from '$lib/paraglide/messages';
 import { getLocale } from '$lib/paraglide/runtime';
@@ -513,7 +514,7 @@ const sortedChatIndices = $derived.by(() => {
 			<div class="border-t border-gray-200 dark:border-gray-700 my-1"></div>
 			
 			<!-- Delete chat -->
-			<ListItemButton danger onclick={handleDeleteRequest}>
+			<ListItemButton danger onclick={handleDeleteRequest} disabled={!chatStorageState.canWrite}>
 				<Icon name="trash" size="sm" />
 				{m.chat_delete()}
 			</ListItemButton>

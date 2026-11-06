@@ -1,5 +1,6 @@
 <script lang="ts">
 import { appLockState } from '$lib/app-lock.svelte';
+import { chatStorageState } from '$lib/chat-storage.svelte';
 import { defaultIdentityState } from '$lib/default-identity.svelte';
 import { formatFileSize } from '$lib/helpers/document-utils';
 import * as m from '$lib/paraglide/messages';
@@ -13,6 +14,7 @@ import {
 import { currentVersion } from '$lib/update-checker.svelte';
 import AppLockGate from './AppLockGate.svelte';
 import Button from './Button.svelte';
+import ChatStorageSettings from './ChatStorageSettings.svelte';
 import Icon from './Icon.svelte';
 import LocaleSwitcher from './LocaleSwitcher.svelte';
 
@@ -413,6 +415,7 @@ async function handleDefaultIdentityChange(value: string) {
 					</div>
 					<div class="text-sm text-gray-500 dark:text-gray-400">{m.settings_storage_used()}</div>
 				</div>
+				<ChatStorageSettings />
 				{#if canClearSiteData}
 					<div class="mt-3 text-sm text-gray-700 dark:text-gray-300 space-y-2">
 						<p class="text-xs text-gray-500 dark:text-gray-400">{m.settings_site_data_hint()}</p>
@@ -437,7 +440,7 @@ async function handleDefaultIdentityChange(value: string) {
 				{#if orphansApi}
 					<div class="mt-3 text-sm text-gray-700 dark:text-gray-300 space-y-2">
 						<p class="text-xs text-gray-500 dark:text-gray-400">{m.settings_orphans_hint()}</p>
-						<Button variant="secondary" size="sm" onclick={checkOrphans} disabled={orphanStatus === 'checking'}>
+						<Button variant="secondary" size="sm" onclick={checkOrphans} disabled={orphanStatus === 'checking' || !chatStorageState.canWrite}>
 							{orphanStatus === 'checking' ? m.settings_orphans_checking() : m.settings_orphans_check()}
 						</Button>
 						{#if orphanStatus === 'none'}
