@@ -16,7 +16,32 @@ diambil biar gak diulang tanya. Remote "origin" = papaonta/whatsapp-backup-reade
 remote "upstream" = rodrigogs/whats-reader (read-only).
 ```
 
-## Current status (as of commit `a24f783`, 2026-08-18, not yet pushed)
+## Current status (per 2026-11-06)
+
+- Redesain 6 fase selesai (lihat "Riwayat redesain" di bawah). Sejak itu pekerjaan berupa Task bernomor dari owner (Task 1–4c), semua tercatat di "Log pekerjaan".
+- `origin/main` sudah memuat sampai Task 4b (`caf128f`). **Task 4c (lokasi penyimpanan chat) ada di commit lokal, BELUM di-push** (owner: "Jangan push").
+- Yang sudah ada untuk keamanan data: tidak ada hapus/ekstrak ulang otomatis, hapus folder yatim hanya manual, link luar dibuka di browser bawaan, auto-lock berhenti selama dialog file/impor panjang, model Whisper tidak ikut terhapus saat startup, dan (Task 4c) penyimpanan chat bisa dipindah ke folder lain (mis. brankas Cryptomator) dengan banner + pengaman bila tidak tersedia.
+- Tes otomatis: `npm run test:e2e` (Electron + profil terisolasi, lihat `scripts/e2e/README.md`). Lint/check/build harus 0 error 0 warning sebelum commit.
+- Belum dikerjakan / diketahui: PIN hanya penghalang UI (data tidak terenkripsi), skrip `machine-translate` di `package.json` + sebutannya di `.github/copilot-instructions.md` masih ada, unduh model Whisper menghubungi huggingface.co (perilaku upstream), bagian khusus Windows di Task 4c belum teruji (lihat log Task 4c), screenshot README masih UI lama.
+- Langkah berikut ditentukan owner (uji manual sendiri, lalu Task berikutnya). Jangan mulai fitur baru tanpa diminta.
+
+## Tujuan & keputusan
+
+- Arsip WhatsApp pemilik ±70 GB dari iPhone. **PC Windows = rumah utama** data chat dan ZIP cadangan. **Mac = development/testing** dengan data kecil.
+- Data chat disimpan di **brankas Cryptomator lokal** dan **TIDAK disinkronkan lewat cloud**. Brankas bisa terkunci saat app terbuka.
+- ZIP cadangan disimpan pemilik **di luar app** (app tidak mengelolanya).
+- Chat dihapus dari iPhone **hanya setelah** data di app diverifikasi lengkap.
+- Prinsip: **kalau ragu, diam**. Saat penyimpanan chat tidak tersedia, app tidak menghapus, mengekstrak ulang, membuat folder, atau mengubah data apa pun.
+- Hanya dua bahasa UI: `en` dan `id`; key baru wajib di keduanya.
+
+## Istilah
+
+- **Data chat** = isi folder `extracted-chats` (hasil ekstrak ZIP: transkrip + media). Inilah yang bisa dipindah lokasinya.
+- **Database app** = IndexedDB/localStorage di `userData` (daftar chat, PIN, pesan berbintang, pengaturan). **Tidak** dipindah.
+- **Penyimpanan chat / lokasi penyimpanan chat** = folder tempat data chat berada (default `userData/extracted-chats`, atau folder pilihan owner). Di kode: `chat-storage` (`electron/lib/chat-storage.cjs`, `src/lib/chat-storage.svelte.ts`).
+- **Arsipkan chat** (`settings.archived`, menu "Chat diarsipkan") = fitur menyembunyikan chat dari daftar utama. **Tidak berhubungan** dengan penyimpanan chat; kata "archive/arsip" tidak dipakai untuk fitur lokasi.
+
+## Riwayat redesain 6 fase (status per 2026-08-18 commit `a24f783`, tidak diperbarui)
 
 Working through a 6-phase WhatsApp-Desktop-style redesign, brainstormed
 and broken down across several sessions. **All 6 phases are now shipped**
@@ -652,6 +677,20 @@ Prinsip: kalau ragu, diam. App tidak boleh menghapus, mengekstrak ulang, atau me
 - Tes e2e dimasukkan ke repo: `npm run test:e2e` (lihat `scripts/e2e/README.md`; `-- 03 04` untuk sebagian). `playwright-core` ditambahkan sebagai devDependency. Tes 06 (model) butuh internet sekali dan otomatis SKIP bila huggingface.co tak terjangkau.
 - Hasil tes 06 di profil terisolasi: unduh pertama 18 request, model tersimpan di CacheStorage, tetap ada setelah restart, 0 request setelah restart, dan hanya terhapus lewat tombol manual (setelah konfirmasi).
 - `scripts/electron-test.cjs` dan runner e2e dulu memakai `require.resolve('vite/bin/vite.js')` (gagal: tidak diekspor); diganti jalur langsung ke `node_modules/vite/bin/vite.js`.
+
+### 2026-11-06 - Task 4c: lokasi penyimpanan chat (brankas Cryptomator)
+
+Commit lokal (BELUM di-push): `feat: add chat storage location (move, reconnect, unavailable banner)` + commit docs ini. Cakupan: data chat saja, database app tidak dipindah.
+
+- **Config & penanda.** `userData/chat-storage.json` = `{ version, root, storageId, installId }` (ditulis atomik: tmp + rename); dibaca main process sebelum jendela dibuat. `installId` ditambahkan ke config (rancangan hanya menyebut version/root/storageId) karena harus tersimpan per instalasi. Di root penyimpanan: `.whatsreader-storage` = `{ storageId, installId, createdAt }`. Satu fungsi `getChatStorageRoot()` (main.cjs) menggantikan semua `getExtractionRoot`, termasuk protokol `media://`.
+- **Default vs kustom.** Lokasi default (`userData/extracted-chats`): saat launch pertama versi ini, config + penanda dibuat otomatis bila folder bisa dibaca (migrasi data lama; instalasi baru juga). Bila penanda default hilang tetapi folder ada, penanda ditulis ulang saat startup. Lokasi KUSTOM: tidak pernah dibuat/ditandai otomatis; folder tidak ada (brankas belum ter-mount) → tidak ada mkdir. Folder default yang hilang saat config sudah ada juga TIDAK dibuat ulang (dianggap tidak tersedia).
+- **Status** (`getStatus`, hanya baca): `ok`; `unavailable` (folder tak ada/tak terbaca, penanda hilang/rusak, config rusak); `foreign` (storageId beda: "Folder ini bukan penyimpanan chat Anda", tanpa baca/tulis); `other-install` (installId beda: peringatan "dipakai komputer lain", baca boleh, hapus/folder yatim/pindah mati). Penegakan ada di MAIN process (`requireWritable()` di ekstrak, merge, deleteDir, listOrphans, deleteOrphans, pindah); UI hanya menonaktifkan tombol + toast.
+- **UI.** Banner di atas daftar chat ("Penyimpanan chat tidak tersedia (brankas terkunci?). Data Anda tidak diubah." + Coba lagi), cek ulang otomatis saat jendela fokus; begitu terbaca lagi, chat abu-abu dipulihkan tanpa ekstraksi. Dinonaktifkan: tombol impor, Hapus Chat, merge, backup ZIP, folder yatim, ekstrak ulang (klik chat abu-abu hanya toast). Settings → Penyimpanan → "Lokasi penyimpanan chat": path, ukuran, status + "Pindahkan…", "Hubungkan ke penyimpanan yang sudah ada…", "Kembalikan ke default".
+- **Pindah.** Tujuan harus ada, kosong, bukan sama/di dalam/membungkus sumber (cek realpath). Cek ruang kosong (`statfs`; bila tak bisa dicek tetap boleh, UI memberi tahu). Konfirmasi dengan jumlah chat + ukuran. Salin per folder chat (stream, flag `wx`, progres, batal), verifikasi jumlah file + total byte per folder, tulis penanda baru (storageId BARU, installId sama), baru ganti config. Folder lama TIDAK dihapus (UI: "hapus manual setelah yakin"). Gagal/batal: config tak berubah, hanya salinan percobaan itu yang dibersihkan. "Kembalikan ke default" memakai alur yang sama; ditolak bila folder default lama masih berisi (hapus manual dulu).
+- **Hubungkan ulang.** Diterima hanya bila penanda folder punya storageId yang sama dengan config; hanya path di config yang berubah (tanpa salin/hapus).
+- **Bug ditemukan lewat tes:** efek di `+page.svelte` yang memanggil `chatStorageState.start()` ikut melacak status → loop cek ulang (tombol "Coba lagi" terus nonaktif). Diperbaiki dengan `untrack`.
+- **Tes:** `scripts/e2e/07-chat-storage-location.cjs` (40 cek: migrasi, brankas terkunci + dibuka lagi lewat fokus dan tombol, path kustom tak ada → tidak ada mkdir, storageId salah, installId lain, pindah + kembalikan default, gagal di tengah, batal, hubungkan ulang). Tes 04/05 disesuaikan aturan baru (chat abu-abu saat penyimpanan tak tersedia tidak lagi membuka modal ekstrak ulang; modal tetap ada bila hanya folder satu chat yang hilang; folder penyimpanan kini berisi file penanda).
+- **Khusus Windows, belum teruji** (semua tes di Mac): huruf drive WinFsp/Cryptomator dan `statfs` pada drive virtual (bila gagal, cek ruang dilewati); perbandingan path tidak peka huruf besar/kecil dan path UNC; file penanda berawalan titik di Windows; tes gagal-pindah memakai `chmod` (tidak berlaku di Windows); `realpath` untuk drive virtual; perilaku saat drive hilang di tengah penyalinan.
 
 ## Working conventions established across sessions (don't relitigate)
 
