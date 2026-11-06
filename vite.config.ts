@@ -49,6 +49,20 @@ export default defineConfig({
 		tailwindcss(),
 		sveltekit(),
 	],
+	server: {
+		watch: {
+			// Editing docs, tests or build output must not trigger a full page
+			// reload: with app lock on, a reload re-locks the app and aborts a
+			// running import (this made the e2e PIN test fail once).
+			ignored: [
+				'**/*.md',
+				'**/scripts/**',
+				'**/dist-electron/**',
+				'**/build/**',
+				'**/examples/**',
+			],
+		},
+	},
 	// Electron needs to use relative paths
 	base: './',
 	build: {
