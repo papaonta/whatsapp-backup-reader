@@ -16,7 +16,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/Svelte-5-FF3E00?style=flat-square&logo=svelte&logoColor=white" alt="Svelte 5" />
-  <img src="https://img.shields.io/badge/Electron-39-47848F?style=flat-square&logo=electron&logoColor=white" alt="Electron 39" />
+  <img src="https://img.shields.io/badge/Electron-45-47848F?style=flat-square&logo=electron&logoColor=white" alt="Electron 45" />
   <img src="https://img.shields.io/badge/AI-Whisper_(local)-00A67E?style=flat-square&logo=openai&logoColor=white" alt="Whisper AI lokal" />
   <img src="https://img.shields.io/badge/Privacy-100%25_offline-4CAF50?style=flat-square&logo=shield&logoColor=white" alt="100% offline" />
 </p>
@@ -79,6 +79,8 @@ Pesan suara dapat ditranskripsikan memakai [Whisper](https://openai.com/research
 ## Unduh
 
 Dapatkan aplikasi desktop untuk platform Anda:
+
+**Syarat sistem:** macOS 13 atau lebih baru, Windows 10 atau lebih baru.
 
 ### Windows
 - Unduh **WhatsApp-Backup-Reader-Setup-{version}.exe** dari [rilis terbaru](https://github.com/papaonta/whatsapp-backup-reader/releases/latest)

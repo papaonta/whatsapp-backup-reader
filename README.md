@@ -16,7 +16,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/Svelte-5-FF3E00?style=flat-square&logo=svelte&logoColor=white" alt="Svelte 5" />
-  <img src="https://img.shields.io/badge/Electron-39-47848F?style=flat-square&logo=electron&logoColor=white" alt="Electron 39" />
+  <img src="https://img.shields.io/badge/Electron-45-47848F?style=flat-square&logo=electron&logoColor=white" alt="Electron 45" />
   <img src="https://img.shields.io/badge/AI-Whisper_(local)-00A67E?style=flat-square&logo=openai&logoColor=white" alt="Local Whisper AI" />
   <img src="https://img.shields.io/badge/Privacy-100%25_offline-4CAF50?style=flat-square&logo=shield&logoColor=white" alt="100% Offline" />
 </p>
@@ -79,6 +79,8 @@ Voice messages can be transcribed using [Whisper](https://openai.com/research/wh
 ## Download
 
 Get the desktop app for your platform:
+
+**System requirements:** macOS 13 or later, Windows 10 or later.
 
 ### Windows
 - Download **WhatsApp-Backup-Reader-Setup-{version}.exe** from the [latest release](https://github.com/papaonta/whatsapp-backup-reader/releases/latest)
