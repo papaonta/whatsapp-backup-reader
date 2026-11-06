@@ -646,6 +646,13 @@ Prinsip: kalau ragu, diam. App tidak boleh menghapus, mengekstrak ulang, atau me
 - Hasil tes (profil terisolasi): link 5/5, cache 3/3, PIN+dialog 4/4, orphan/prune 9/9, brankas terkunci + bintang 9/9, regresi impor/cancel/delete/re-extract 6/6.
 - Belum dikerjakan: "Lokasi arsip" (bagian 4 audit 4a), pengecekan penanda arsip.
 
+### 2026-11-06 - Task 4b (lanjutan): model Whisper + tes e2e
+
+- Model Whisper (`@huggingface/transformers` 3.8.1, `Xenova/whisper-small`) disimpan di CacheStorage (`transformers-cache`, origin app). Pembersihan startup di Task 4b awalnya ikut menghapus `cachestorage` sehingga model diunduh ulang tiap launch. Sekarang startup hanya `cookies` + `serviceworkers`; tombol manual Settings ("Bersihkan data situs web") tetap menghapus `cachestorage`, dengan langkah konfirmasi + peringatan bahwa model harus diunduh ulang.
+- Tes e2e dimasukkan ke repo: `npm run test:e2e` (lihat `scripts/e2e/README.md`; `-- 03 04` untuk sebagian). `playwright-core` ditambahkan sebagai devDependency. Tes 06 (model) butuh internet sekali dan otomatis SKIP bila huggingface.co tak terjangkau.
+- Hasil tes 06 di profil terisolasi: unduh pertama 18 request, model tersimpan di CacheStorage, tetap ada setelah restart, 0 request setelah restart, dan hanya terhapus lewat tombol manual (setelah konfirmasi).
+- `scripts/electron-test.cjs` dan runner e2e dulu memakai `require.resolve('vite/bin/vite.js')` (gagal: tidak diekspor); diganti jalur langsung ke `node_modules/vite/bin/vite.js`.
+
 ## Working conventions established across sessions (don't relitigate)
 
 - New i18n keys: add to both `messages/en.json` and `messages/id.json`
