@@ -64,7 +64,6 @@ async function loadModel(): Promise<void> {
 	isLoading = true;
 
 	try {
-		// @ts-expect-error - pipeline types are complex
 		whisperPipeline = await pipeline('automatic-speech-recognition', MODEL_ID, {
 			dtype: 'q8',
 			device: 'wasm',

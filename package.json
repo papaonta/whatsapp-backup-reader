@@ -66,7 +66,7 @@
 	"devDependencies": {
 		"@biomejs/biome": "2.4.10",
 		"@floating-ui/dom": "^1.7.6",
-		"@huggingface/transformers": "^3.8.1",
+		"@huggingface/transformers": "^4.3.2",
 		"@inlang/cli": "^3.1.9",
 		"@inlang/paraglide-js": "2.15.1",
 		"@inlang/plugin-m-function-matcher": "^2.2.4",
@@ -180,9 +180,9 @@
 		"electron@45.2.3": true,
 		"electron-winstaller@5.4.0": true,
 		"esbuild@0.28.2": true,
-		"onnxruntime-node@1.21.0": true,
+		"onnxruntime-node@1.30.0": true,
 		"protobufjs@7.6.6": true,
-		"sharp@0.34.5": true,
+		"sharp@0.35.5": true,
 		"fsevents@2.3.3": true
 	}
 }
