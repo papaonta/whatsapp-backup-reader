@@ -7,6 +7,28 @@ const path = require('node:path');
 const { _electron } = require('playwright-core');
 
 const repo = path.resolve(__dirname, '..', '..');
+
+// Safety: the tests write large temporary files and rename/delete folders.
+// Never run them with a temp folder on a vault or virtual/external drive.
+function assertTempIsLocal() {
+	const tmp = fs.realpathSync(os.tmpdir());
+	let bad = null;
+	if (process.platform === 'win32') {
+		const systemDrive = (process.env.SystemDrive || 'C:').toLowerCase();
+		if (path.parse(tmp).root.slice(0, 2).toLowerCase() !== systemDrive) {
+			bad = 'the temp folder is not on the system drive';
+		}
+	} else if (tmp.startsWith('/Volumes/') || tmp.startsWith('/media/') || tmp.startsWith('/mnt/')) {
+		bad = 'the temp folder is on a mounted volume';
+	}
+	if (!bad && /cryptomator/i.test(tmp)) bad = 'the temp folder looks like a Cryptomator vault';
+	if (bad) {
+		console.error(`ERR Refusing to run e2e tests: ${bad} (${tmp}). Set TMPDIR/TEMP to a normal local folder.`);
+		process.exit(1);
+	}
+}
+assertTempIsLocal();
+
 const S = path.join(os.tmpdir(), 'whats-reader-e2e');
 fs.mkdirSync(path.join(S, 'zips'), { recursive: true });
 // Sample export used by the tests (copied so tests may move/rename it).

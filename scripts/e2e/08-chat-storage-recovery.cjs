@@ -163,14 +163,14 @@ const selectChat = async (page) => {
 		await app.close();
 	}
 
-	// ---- during a move: import, merge, delete, backup are locked
+	// ---- during a move (2 GB file: long enough to check and cancel mid-copy): import, merge, delete, backup are locked
 	{
 		const P = clone(seed, 'moving');
 		const D = `${base}/moving-dest`;
 		fs.mkdirSync(D);
 		const big = `${rootOf(P)}/${ID}/media/big-test.bin`;
 		const fd = fs.openSync(big, 'w');
-		fs.ftruncateSync(fd, 8 * 1024 * 1024 * 1024);
+		fs.ftruncateSync(fd, 2 * 1024 * 1024 * 1024);
 		fs.closeSync(fd);
 		const { app, page } = await launch(P);
 		await sleep(5000);
@@ -180,27 +180,36 @@ const selectChat = async (page) => {
 		await page.locator('[data-testid=chat-storage-confirm]').waitFor({ timeout: 15000 });
 		await page.getByRole('button', { name: 'Copy and switch' }).click();
 		await page.locator('[data-testid=chat-storage-progress]').waitFor({ timeout: 10000 });
+		// One round trip so every check happens while the copy is still running.
 		const during = await page.evaluate(async (zip) => {
+			const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 			const x = window.electronAPI.extraction;
-			return {
+			const out = {
 				extract: await x.extract(zip, 'zz-during'),
 				merged: await x.createMergedChat('zz-during-m', 'a.txt', 'x', []),
 				del: await x.deleteDir('zz-during'),
 			};
+			// Settings is a full page: back to the chat list, then open the chat.
+			[...document.querySelectorAll('button')].find((b) => b.innerText.includes('Back to chats'))?.click();
+			await wait(250);
+			out.importDisabled = document.querySelector('button[aria-label="Import Chat"]')?.disabled === true;
+			const items = [...document.querySelectorAll('.sidebar-panel *')].filter((e) => e.textContent.includes('ios-private-chat'));
+			items.sort((a, b) => a.textContent.length - b.textContent.length)[0]?.click();
+			await wait(600);
+			out.mergeDisabled = document.querySelector('button[aria-label="Merge with another chat…"]')?.disabled === true;
+			out.backupDisabled = document.querySelector('button[aria-label="Backup as ZIP"]')?.disabled === true;
+			out.stillMoving = await window.electronAPI.chatStorage.getStatus().then((s) => s.moving);
+			return out;
 		}, ZIP);
-		// Settings is a full page: go back to the chat list while the move runs.
-		await page.getByRole('button', { name: 'Back to chats' }).click();
-		await sleep(1000);
-		during.importDisabled = (await disabled(page, 'button[aria-label="Import Chat"]')) === true;
 		ok(
-			'during a move: extract, merge and delete refused by the main process; import button off',
-			during.extract.success === false && during.merged.success === false && during.del.success === false && during.importDisabled,
+			'during a move: extract, merge and delete refused by the main process',
+			during.extract.success === false && during.merged.success === false && during.del.success === false && during.stillMoving === true,
 			JSON.stringify(during).slice(0, 300),
 		);
-		await selectChat(page);
 		ok(
-			'during a move: merge and backup buttons off after returning to the chat',
-			(await disabled(page, 'button[aria-label="Merge with another chat…"]')) === true && (await disabled(page, 'button[aria-label="Backup as ZIP"]')) === true,
+			'during a move: import, merge and backup buttons are off',
+			during.importDisabled && during.mergeDisabled && during.backupDisabled,
+			JSON.stringify(during).slice(0, 300),
 		);
 		await page.evaluate(() => window.electronAPI.chatStorage.cancelMove());
 		await sleep(2500);
