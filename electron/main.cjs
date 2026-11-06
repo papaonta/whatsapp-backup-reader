@@ -75,14 +75,27 @@ app.on('web-contents-created', (_event, contents) => {
 	contents.on('will-redirect', blockNavigation);
 });
 
-// Leftovers from websites that were once opened inside the app window
-// (cookies, service workers, Cache Storage). Only these three storage types
-// are cleared - the explicit list guarantees IndexedDB and localStorage (PIN,
-// chat list, starred messages, settings) are never touched.
-const SITE_DATA_STORAGES = ['cookies', 'serviceworkers', 'cachestorage'];
+// Leftovers from websites that were once opened inside the app window.
+// Only the listed storage types are ever cleared - the explicit lists
+// guarantee IndexedDB and localStorage (PIN, chat list, starred messages,
+// settings) are never touched.
+//
+// Cache Storage is NOT part of the automatic startup cleanup: the downloaded
+// Whisper transcription model (@huggingface/transformers, "transformers-cache")
+// lives there, and clearing it would force a re-download on every launch. It
+// is only cleared by the manual "Clear website data" button, which warns about it.
+const STARTUP_SITE_DATA_STORAGES = ['cookies', 'serviceworkers'];
+const MANUAL_SITE_DATA_STORAGES = ['cookies', 'serviceworkers', 'cachestorage'];
 
-const clearSiteData = () =>
-	session.defaultSession.clearStorageData({ storages: SITE_DATA_STORAGES });
+const clearStartupSiteData = () =>
+	session.defaultSession.clearStorageData({
+		storages: STARTUP_SITE_DATA_STORAGES,
+	});
+
+const clearAllSiteData = () =>
+	session.defaultSession.clearStorageData({
+		storages: MANUAL_SITE_DATA_STORAGES,
+	});
 
 // Get the build directory path
 const getBuildPath = () => {
@@ -167,7 +180,7 @@ protocol.registerSchemesAsPrivileged([
 // This method will be called when Electron has finished
 // initialization and is ready to create browser windows.
 app.whenReady().then(async () => {
-	await clearSiteData().catch((err) => {
+	await clearStartupSiteData().catch((err) => {
 		console.error('Failed to clear leftover site data:', err);
 	});
 
@@ -588,7 +601,7 @@ ipcMain.handle('extraction:getStorageUsage', async () => {
 
 ipcMain.handle('siteData:clear', async () => {
 	try {
-		await clearSiteData();
+		await clearAllSiteData();
 		return { success: true };
 	} catch (error) {
 		return {

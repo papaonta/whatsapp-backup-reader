@@ -433,5 +433,7 @@
   "settings_site_data_hint": "Cookies, service workers and cache left by websites. Your chats, PIN, starred messages and settings are not affected.",
   "settings_site_data_clear": "Clear website data",
   "settings_site_data_cleared": "Website data cleared",
-  "settings_site_data_failed": "Couldn't clear website data"
+  "settings_site_data_failed": "Couldn't clear website data",
+  "settings_site_data_warning": "This also deletes the downloaded transcription model (Whisper). It will be downloaded again the next time you transcribe audio.",
+  "settings_site_data_confirm_action": "Yes, clear"
 }

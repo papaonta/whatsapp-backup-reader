@@ -38,7 +38,9 @@ let storageError = $state(false);
 // Clears cookies / service workers / Cache Storage left by websites (Electron
 // only). Never touches the saved chats, PIN, starred messages or settings.
 const canClearSiteData = !!window.electronAPI?.clearSiteData;
-let siteDataStatus = $state<'idle' | 'busy' | 'done' | 'failed'>('idle');
+let siteDataStatus = $state<'idle' | 'confirm' | 'busy' | 'done' | 'failed'>(
+	'idle',
+);
 
 async function clearSiteData() {
 	if (!window.electronAPI?.clearSiteData) return;
@@ -414,9 +416,17 @@ async function handleDefaultIdentityChange(value: string) {
 				{#if canClearSiteData}
 					<div class="mt-3 text-sm text-gray-700 dark:text-gray-300 space-y-2">
 						<p class="text-xs text-gray-500 dark:text-gray-400">{m.settings_site_data_hint()}</p>
-						<Button variant="secondary" size="sm" onclick={clearSiteData} disabled={siteDataStatus === 'busy'}>
-							{m.settings_site_data_clear()}
-						</Button>
+						{#if siteDataStatus === 'confirm'}
+							<p class="text-red-600 dark:text-red-400 font-medium">{m.settings_site_data_warning()}</p>
+							<div class="flex gap-2">
+								<Button variant="danger" size="sm" onclick={clearSiteData}>{m.settings_site_data_confirm_action()}</Button>
+								<Button variant="ghost" size="sm" onclick={() => (siteDataStatus = 'idle')}>{m.persistence_duplicate_cancel()}</Button>
+							</div>
+						{:else}
+							<Button variant="secondary" size="sm" onclick={() => (siteDataStatus = 'confirm')} disabled={siteDataStatus === 'busy'}>
+								{m.settings_site_data_clear()}
+							</Button>
+						{/if}
 						{#if siteDataStatus === 'done'}
 							<p>{m.settings_site_data_cleared()}</p>
 						{:else if siteDataStatus === 'failed'}
