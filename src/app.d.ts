@@ -123,6 +123,20 @@ interface ElectronAPI {
 		) => Promise<ChatStoragePlanResult>;
 		move: (options: ChatStorageMoveOptions) => Promise<ChatStorageMoveResult>;
 		cancelMove: () => Promise<{ success: boolean }>;
+		createDefault: () => Promise<{
+			success: boolean;
+			reason?: string;
+			error?: string;
+		}>;
+		previewRecover: (dir: string) => Promise<{
+			success: boolean;
+			reason?: string;
+			root?: string;
+			createdAt?: string | null;
+		}>;
+		recover: (
+			dir: string,
+		) => Promise<{ success: boolean; reason?: string; error?: string }>;
 		reconnect: (
 			dir: string,
 		) => Promise<{ success: boolean; reason?: string; error?: string }>;

@@ -685,6 +685,38 @@ ipcMain.handle('chatStorage:move', async (_event, options) => {
 	}
 });
 
+ipcMain.handle('chatStorage:createDefault', async () => {
+	try {
+		return await chatStorage.createDefaultFolder();
+	} catch (error) {
+		return {
+			success: false,
+			reason: 'error',
+			error: error instanceof Error ? error.message : String(error),
+		};
+	}
+});
+
+ipcMain.handle('chatStorage:previewRecover', async (_event, dir) => {
+	try {
+		return await chatStorage.previewRecover(dir);
+	} catch {
+		return { success: false, reason: 'error' };
+	}
+});
+
+ipcMain.handle('chatStorage:recover', async (_event, dir) => {
+	try {
+		return await chatStorage.recoverFromMarker(dir);
+	} catch (error) {
+		return {
+			success: false,
+			reason: 'error',
+			error: error instanceof Error ? error.message : String(error),
+		};
+	}
+});
+
 ipcMain.handle('chatStorage:cancelMove', async () => chatStorage.cancelMove());
 
 ipcMain.handle('chatStorage:reconnect', async (_event, dir) => {

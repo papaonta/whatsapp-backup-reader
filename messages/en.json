@@ -472,5 +472,12 @@
   "chat_storage_err_no_space": "Not enough free space at the destination. Nothing was changed.",
   "chat_storage_err_bad_destination": "That folder cannot be used. Pick an existing, empty folder. Nothing was changed.",
   "chat_storage_err_wrong_storage": "This folder is not your chat storage. Nothing was changed.",
-  "chat_storage_err_no_marker": "This folder has no valid chat storage marker. Nothing was changed."
+  "chat_storage_err_no_marker": "This folder has no valid chat storage marker. Nothing was changed.",
+  "chat_storage_banner_config_corrupt": "The chat storage settings file could not be read (a copy was saved as chat-storage.json.corrupt). Your data has not been changed.",
+  "chat_storage_create_default": "Create new folder in default location",
+  "chat_storage_create_default_confirm": "Create a new, empty chat storage folder at {path}? Your existing chats are NOT restored by this: they will keep showing \"Tap to reopen\". Nothing is deleted.",
+  "chat_storage_create_default_action": "Create folder",
+  "chat_storage_recover": "Recover from marker…",
+  "chat_storage_recover_confirm": "Use the chat storage in {path}? Only the settings file is rewritten from that folder's marker. Nothing is copied or deleted.",
+  "chat_storage_recover_action": "Recover"
 }

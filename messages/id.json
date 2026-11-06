@@ -472,5 +472,12 @@
   "chat_storage_err_no_space": "Ruang kosong di tujuan tidak cukup. Tidak ada yang diubah.",
   "chat_storage_err_bad_destination": "Folder itu tidak bisa dipakai. Pilih folder yang sudah ada dan kosong. Tidak ada yang diubah.",
   "chat_storage_err_wrong_storage": "Folder ini bukan penyimpanan chat Anda. Tidak ada yang diubah.",
-  "chat_storage_err_no_marker": "Folder ini tidak punya penanda penyimpanan chat yang valid. Tidak ada yang diubah."
+  "chat_storage_err_no_marker": "Folder ini tidak punya penanda penyimpanan chat yang valid. Tidak ada yang diubah.",
+  "chat_storage_banner_config_corrupt": "File pengaturan penyimpanan chat tidak bisa dibaca (salinannya disimpan sebagai chat-storage.json.corrupt). Data Anda tidak diubah.",
+  "chat_storage_create_default": "Buat folder baru di lokasi default",
+  "chat_storage_create_default_confirm": "Buat folder penyimpanan chat baru yang kosong di {path}? Chat lama TIDAK dipulihkan oleh langkah ini: tetap tampil \"Ketuk untuk membuka kembali\". Tidak ada yang dihapus.",
+  "chat_storage_create_default_action": "Buat folder",
+  "chat_storage_recover": "Pulihkan dari penanda…",
+  "chat_storage_recover_confirm": "Pakai penyimpanan chat di {path}? Hanya file pengaturan yang ditulis ulang dari penanda folder itu. Tidak ada yang disalin atau dihapus.",
+  "chat_storage_recover_action": "Pulihkan"
 }

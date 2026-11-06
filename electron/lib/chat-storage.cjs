@@ -199,7 +199,17 @@ function createChatStorage(userDataDir, { isBusy = () => false } = {}) {
 		const read = readConfigFile();
 		config = read.config;
 		configProblem = read.problem;
-		if (configProblem) return;
+		if (configProblem) {
+			// Keep a copy of the unreadable file (never overwrite an earlier copy).
+			// The original is left in place, and nothing else is touched.
+			const copy = fs.existsSync(`${configPath}.corrupt`)
+				? `${configPath}.corrupt.${Date.now()}`
+				: `${configPath}.corrupt`;
+			try {
+				fs.copyFileSync(configPath, copy, fs.constants.COPYFILE_EXCL);
+			} catch {}
+			return;
+		}
 
 		if (!config) {
 			// First launch of a version with this feature (or a fresh install).
@@ -537,8 +547,83 @@ function createChatStorage(userDataDir, { isBusy = () => false } = {}) {
 		return { success: true, status: await getStatus() };
 	}
 
+	/**
+	 * Manual action for a missing DEFAULT folder (inside userData): creates a
+	 * new, empty folder with the existing marker identity. Never for a custom
+	 * location, never when the folder exists, and the parent must already exist.
+	 */
+	async function createDefaultFolder() {
+		if (configProblem || !config)
+			return { success: false, reason: 'no-config' };
+		if (moving || isBusy()) return { success: false, reason: 'busy' };
+		if (!isDefaultRoot(config.root)) {
+			return { success: false, reason: 'not-default' };
+		}
+		const status = await getStatus();
+		if (status.reason !== 'missing') {
+			return { success: false, reason: 'not-missing' };
+		}
+		try {
+			await fs.promises.mkdir(config.root); // not recursive on purpose
+			await writeMarker(config.root, {
+				storageId: config.storageId,
+				installId: config.installId,
+				createdAt: new Date().toISOString(),
+			});
+		} catch (error) {
+			return {
+				success: false,
+				reason: 'error',
+				error: error instanceof Error ? error.message : String(error),
+			};
+		}
+		return { success: true, status: await getStatus() };
+	}
+
+	async function readRecoverCandidate(dir) {
+		if (!configProblem) return { success: false, reason: 'not-needed' };
+		if (typeof dir !== 'string' || !path.isAbsolute(dir)) {
+			return { success: false, reason: 'invalid-destination' };
+		}
+		const root = path.resolve(dir);
+		const { marker, error } = await readMarker(root);
+		if (!marker) return { success: false, reason: error };
+		return { success: true, root, marker };
+	}
+
+	/** Read-only: what would be adopted from this folder's marker. */
+	async function previewRecover(dir) {
+		const found = await readRecoverCandidate(dir);
+		if (!found.success) return found;
+		return {
+			success: true,
+			root: found.root,
+			createdAt: found.marker.createdAt ?? null,
+		};
+	}
+
+	/**
+	 * Only when the config file is unreadable: adopts storageId + installId from
+	 * the chosen folder's marker and points the config at that folder. Copies
+	 * and deletes nothing.
+	 */
+	async function recoverFromMarker(dir) {
+		const found = await readRecoverCandidate(dir);
+		if (!found.success) return found;
+		writeConfigFile({
+			version: CONFIG_VERSION,
+			root: found.root,
+			storageId: found.marker.storageId,
+			installId: found.marker.installId,
+		});
+		return { success: true, status: await getStatus() };
+	}
+
 	return {
 		init,
+		createDefaultFolder,
+		previewRecover,
+		recoverFromMarker,
 		getStatus,
 		requireWritable,
 		planMove,

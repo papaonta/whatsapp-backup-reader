@@ -23,6 +23,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
 		planMove: (options) => ipcRenderer.invoke('chatStorage:planMove', options),
 		move: (options) => ipcRenderer.invoke('chatStorage:move', options),
 		cancelMove: () => ipcRenderer.invoke('chatStorage:cancelMove'),
+		createDefault: () => ipcRenderer.invoke('chatStorage:createDefault'),
+		previewRecover: (dir) =>
+			ipcRenderer.invoke('chatStorage:previewRecover', dir),
+		recover: (dir) => ipcRenderer.invoke('chatStorage:recover', dir),
 		reconnect: (dir) => ipcRenderer.invoke('chatStorage:reconnect', dir),
 		onMoveProgress: (callback) => {
 			const subscription = (_event, data) => callback(data);
