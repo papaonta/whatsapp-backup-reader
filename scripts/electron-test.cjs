@@ -72,7 +72,7 @@ async function main() {
 	if (!(await isUp())) {
 		console.log('Starting the dev server...');
 		// Run vite directly (not via `npm run dev`) so killing it really stops the server.
-		vite = spawn(process.execPath, [require.resolve('vite/bin/vite.js'), 'dev'], {
+		vite = spawn(process.execPath, [path.join(root, 'node_modules', 'vite', 'bin', 'vite.js'), 'dev'], {
 			cwd: root,
 			env,
 			stdio: 'ignore',
