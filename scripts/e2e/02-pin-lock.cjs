@@ -61,7 +61,12 @@ const seedLock = (page, idleMinutes) =>
 		window.addEventListener('blur', () => window.__blurs++);
 	});
 	await page.getByText('click to browse').first().click();
-	await sleep(10000);
+	await sleep(9000);
+	// The OS-level blur() above only fires if the test window really had focus
+	// (not the case for background runs, and Electron 45 no longer emits it for
+	// an unfocused window). Dispatch the same DOM event the app listens to.
+	await page.evaluate(() => window.dispatchEvent(new Event('blur')));
+	await sleep(1000);
 	let st = await page.evaluate(() => ({
 		blurs: window.__blurs,
 		gate: document.querySelectorAll('input[type=password]').length,
@@ -89,11 +94,7 @@ const seedLock = (page, idleMinutes) =>
 	);
 	ok('pin: import completed after the pick (chat persisted)', persisted === 1, `records=${persisted}`);
 
-	await app.evaluate(({ BrowserWindow }) => {
-		BrowserWindow.getAllWindows()
-			.find((x) => x.webContents.getURL().startsWith('http://localhost:5173'))
-			.blur();
-	});
+	await page.evaluate(() => window.dispatchEvent(new Event('blur')));
 	await sleep(1500);
 	ok('pin: after release, blur locks again', (await page.locator('input[type=password]').count()) === 1);
 	await app.close();

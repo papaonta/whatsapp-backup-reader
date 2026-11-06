@@ -79,7 +79,7 @@
 		"@tailwindcss/vite": "^4.2.2",
 		"concurrently": "^9.2.1",
 		"cross-env": "^10.1.0",
-		"electron": "^39.8.6",
+		"electron": "^45.2.3",
 		"electron-builder": "~26.0.12",
 		"idb-keyval": "^6.2.2",
 		"jszip": "^3.10.1",
@@ -177,7 +177,7 @@
 		"buildDependenciesFromSource": false
 	},
 	"allowScripts": {
-		"electron@39.8.10": true,
+		"electron@45.2.3": true,
 		"electron-winstaller@5.4.0": true,
 		"esbuild@0.28.2": true,
 		"onnxruntime-node@1.21.0": true,
