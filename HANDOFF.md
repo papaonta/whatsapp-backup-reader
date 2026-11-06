@@ -44,11 +44,10 @@ remote "upstream" = rodrigogs/whats-reader (read-only).
 
 ## Backlog
 
-Belum dikerjakan; urutan bukan prioritas.
+Belum dikerjakan; urutan bukan prioritas. (Huruf c = upgrade Electron/dependency, selesai di Task 5 dan dihapus.)
 
 - **a.** Tombol "Buka Cryptomator" di banner "penyimpanan chat tidak tersedia".
 - **b.** Rilis publik: rilis lama kemungkinan berstatus draft (badge README "no releases"), dan badge CI "no status".
-- **c.** Upgrade Electron dan dependency (audit: 1 critical, 18 high).
 - **d.** Fase berbagi ke teman: Cryptomator tetap opsional, panduan peringatan SmartScreen/Gatekeeper, pertimbangan nama tanpa kata "WhatsApp".
 - **e.** Bersih-bersih: skrip `machine-translate` (di `package.json`) dan `.github/copilot-instructions.md`.
 - **f.** Kandidat jangka panjang: enkripsi bawaan app.
@@ -713,6 +712,17 @@ Task 4c sudah di-push (`caf128f..d55c827`). Keputusan owner: storageId baru sete
 - **Merge/impor/hapus/backup terkunci:** merge sudah mati untuk penanda installId lain (canWrite=false) dan kini dites dengan chat terbuka. Selama "Pindahkan" berjalan, tombol-tombol itu mati langsung di UI (`chatStorageState.setMoving`) dan main process menolak ekstrak/merge/hapus ("sedang dipindah"); dites dengan file sparse 8 GB lalu dibatalkan.
 - **Tes 02 (PIN) yang gagal sekali:** penyebab lingkungan uji, bukan bug app. Dev server Vite me-reload halaman penuh saat file APA PUN di repo berubah (terbukti dengan menyentuh `HANDOFF.md`); saat run pertama saya mengedit HANDOFF.md/README, reload terjadi di tengah impor, app terkunci ulang karena PIN aktif dan impor terputus (gate=1, records=0). Perbaikan: `server.watch.ignored` di `vite.config.ts` untuk `*.md`, `scripts/`, `build/`, `dist-electron/`, `examples/`. Aturan praktis: jangan mengedit `src/` atau `electron/` saat `test:e2e` berjalan.
 - **Tes:** `08-chat-storage-recovery` baru; helper bersama di `scripts/e2e/storage-helpers.cjs` (dipakai 07 dan 08).
+
+### 2026-11-07 - Task 5: upgrade Node, Electron, dependency
+
+Commit lokal (BELUM di-push): `chore: standardise on Node 26 LTS`, `fix(deps): upgrade Electron 39 -> 45.2.3`, `fix(deps): update electron-builder to 26.18, electron-updater and audit-fixable packages`, `fix(deps): upgrade @huggingface/transformers 3.8.1 -> 4.3.2`. Task 4d sudah di-push (`d55c827..5731dbe`).
+
+- **Node:** satu versi = **Node 26 (LTS "Lithium" sejak Okt 2026; terbaru 26.13.0)**. `mise.toml` `node = "26"`, `engines.node >= 26.0.0`, semua workflow `node-version: 26`. Alasan: LTS terbaru; Electron 45 hanya butuh >= 22.12; `node_modules/electron/install.js` Electron 45 berjalan normal di Node 26 (dites; masalah "gagal diam-diam" hanya terjadi pada Electron 39). Node lokal 26.5.0 memenuhi.
+- **Electron 39.8.x -> 45.2.3** (stable terbaru). Catatan breaking 40-45 yang relevan: 42 binary diunduh saat pertama dipakai (bukan postinstall) dan `quotas` di `clearStorageData` dihapus (tidak dipakai); 43 `defaultPath` dialog default (tak berpengaruh); 44 macOS 12 tidak lagi didukung (butuh macOS 13+), binary ia32 dihapus; 45 shim Node di preload sandbox dihapus (preload hanya memakai contextBridge/ipcRenderer) dan anak `window.open` di-sandbox (kita menolak semua window.open). Tidak ada perubahan kode di main/preload/protokol `media://`/IPC/dialog. `allowScripts` diganti ke `electron@45.2.3`.
+- **Dependency lain:** electron-builder 26.0.20 -> 26.18.0, electron-updater -> 6.8.11, `npm audit fix` (tanpa --force), `@huggingface/transformers` 3.8.1 -> 4.3.2 (+ `onnxruntime-web` dev build, `sharp` 0.35.5). Plugin vite `ortWasmOptimize` dihapus (v4 tidak lagi memakai berkas jsep itu). Efek: wasm ONNX yang dibundel kini varian asyncify ±27 MB (sebelumnya ±11 MB).
+- **Audit:** 62 (1 critical, 18 high, 38 moderate, 5 low) -> 45 (0 critical, 0 high, 40 moderate, 5 low). Sisa semuanya alat build/CI (minimatch/glob DoS di electron-builder dan semantic-release/npm, deepmerge, rantai @sveltejs low), tidak ikut terbundel ke app.
+- **Tes:** `test:e2e` penuh 107 PASS di Electron 45 (tes 06 model Whisper termasuk). Tes 02 (PIN) disesuaikan: memakai event DOM `blur` (bukan `BrowserWindow.blur()` yang bergantung fokus OS jendela). Transkripsi nyata voice note diuji manual via script (model ter-load, hasil keluar ±50 dtk). DMG dibangun lokal (`CSC_IDENTITY_AUTO_DISCOVERY=false npm run electron:build:mac`), `hdiutil verify` valid, app hasil build dibuka dengan profil terisolasi: impor chat contoh, voice note dimuat lewat `media://`, status penyimpanan ok.
+- Catatan: tes 06 sekali timeout 10 menit di satu run penuh Electron 45 (model tidak sampai "Transcribing..."), tidak terulang di 3 run berikutnya; dugaan: jaringan/huggingface, belum terbukti.
 
 ## Working conventions established across sessions (don't relitigate)
 
