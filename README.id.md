@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/papaonta/whatsapp-backup-reader/releases/latest"><img src="https://img.shields.io/github/v/release/papaonta/whatsapp-backup-reader?style=flat-square&color=blue" alt="Rilis terbaru" /></a>
+  <a href="https://github.com/papaonta/whatsapp-backup-reader/releases/latest"><img src="https://img.shields.io/github/v/release/papaonta/whatsapp-backup-reader?display_name=tag&sort=semver&style=flat-square&color=blue" alt="Rilis terbaru" /></a>
   <a href="https://github.com/papaonta/whatsapp-backup-reader/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/papaonta/whatsapp-backup-reader/ci.yml?branch=main&style=flat-square&label=CI" alt="Status CI" /></a>
   <a href="https://github.com/papaonta/whatsapp-backup-reader/blob/main/LICENSE"><img src="https://img.shields.io/github/license/papaonta/whatsapp-backup-reader?style=flat-square" alt="Lisensi" /></a>
 </p>
@@ -80,7 +80,7 @@ Pesan suara dapat ditranskripsikan memakai [Whisper](https://openai.com/research
 
 Dapatkan aplikasi desktop untuk platform Anda:
 
-**Syarat sistem:** macOS 13 atau lebih baru, Windows 10 atau lebih baru.
+**Syarat sistem:** macOS 13 atau lebih baru (hanya Apple Silicon), Windows 10 atau lebih baru (64-bit, x64). Mac Intel dan Windows on ARM tidak dibangun.
 
 ### Windows
 - Unduh **WhatsApp-Backup-Reader-Setup-{version}.exe** dari [rilis terbaru](https://github.com/papaonta/whatsapp-backup-reader/releases/latest)
@@ -88,8 +88,7 @@ Dapatkan aplikasi desktop untuk platform Anda:
 - Aplikasi akan memperbarui diri saat versi baru tersedia
 
 ### macOS
-- **Apple Silicon (M1/M2/M3)**: Unduh **WhatsApp-Backup-Reader-{version}-arm64.dmg**
-- **Intel**: Unduh **WhatsApp-Backup-Reader-{version}.dmg**
+- **Apple Silicon (M1 dan seterusnya)**: Unduh **WhatsApp-Backup-Reader-{version}-arm64.dmg**
 - Buka file DMG lalu seret aplikasi ke folder Applications
 - Saat pertama dibuka, klik kanan aplikasi dan pilih "Open" untuk melewati Gatekeeper
 

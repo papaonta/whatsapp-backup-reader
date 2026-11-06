@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/papaonta/whatsapp-backup-reader/releases/latest"><img src="https://img.shields.io/github/v/release/papaonta/whatsapp-backup-reader?style=flat-square&color=blue" alt="Latest Release" /></a>
+  <a href="https://github.com/papaonta/whatsapp-backup-reader/releases/latest"><img src="https://img.shields.io/github/v/release/papaonta/whatsapp-backup-reader?display_name=tag&sort=semver&style=flat-square&color=blue" alt="Latest Release" /></a>
   <a href="https://github.com/papaonta/whatsapp-backup-reader/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/papaonta/whatsapp-backup-reader/ci.yml?branch=main&style=flat-square&label=CI" alt="CI Status" /></a>
   <a href="https://github.com/papaonta/whatsapp-backup-reader/blob/main/LICENSE"><img src="https://img.shields.io/github/license/papaonta/whatsapp-backup-reader?style=flat-square" alt="License" /></a>
 </p>
@@ -80,7 +80,7 @@ Voice messages can be transcribed using [Whisper](https://openai.com/research/wh
 
 Get the desktop app for your platform:
 
-**System requirements:** macOS 13 or later, Windows 10 or later.
+**System requirements:** macOS 13 or later (Apple Silicon only), Windows 10 or later (64-bit, x64). Intel Macs and Windows on ARM are not built.
 
 ### Windows
 - Download **WhatsApp-Backup-Reader-Setup-{version}.exe** from the [latest release](https://github.com/papaonta/whatsapp-backup-reader/releases/latest)
@@ -88,8 +88,7 @@ Get the desktop app for your platform:
 - The app will auto-update when new versions are available
 
 ### macOS
-- **Apple Silicon (M1/M2/M3)**: Download **WhatsApp-Backup-Reader-{version}-arm64.dmg**
-- **Intel**: Download **WhatsApp-Backup-Reader-{version}.dmg**
+- **Apple Silicon (M1 and later)**: Download **WhatsApp-Backup-Reader-{version}-arm64.dmg**
 - Open the DMG file and drag the app to Applications
 - On first launch, right-click the app and select "Open" to bypass Gatekeeper
 
