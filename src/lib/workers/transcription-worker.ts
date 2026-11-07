@@ -32,6 +32,8 @@ interface ProgressResponse {
 	type: 'progress';
 	progress: number;
 	status?: string;
+	file?: string;
+	loaded?: number;
 }
 
 interface ModelReadyResponse {
@@ -67,12 +69,19 @@ async function loadModel(): Promise<void> {
 		whisperPipeline = await pipeline('automatic-speech-recognition', MODEL_ID, {
 			dtype: 'q8',
 			device: 'wasm',
-			progress_callback: (progress: { progress?: number; status?: string }) => {
+			progress_callback: (progress: {
+				progress?: number;
+				status?: string;
+				file?: string;
+				loaded?: number;
+			}) => {
 				const response: ProgressResponse = {
 					type: 'progress',
 					progress:
 						progress.progress !== undefined ? Math.round(progress.progress) : 0,
 					status: progress.status,
+					file: progress.file,
+					loaded: progress.loaded,
 				};
 				self.postMessage(response);
 			},

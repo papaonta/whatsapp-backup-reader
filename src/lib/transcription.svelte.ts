@@ -21,6 +21,71 @@ let isModelReady = $state(false);
 // Worker instance
 let worker: Worker | null = null;
 
+// Model loading watchdog: if NOTHING moves (no new bytes, no new stage) for
+// this long, the attempt is stopped and an error with a Retry is shown. There
+// is deliberately no total time limit, so a slow but running download is never
+// cut off.
+const MODEL_STALL_MS = 2 * 60 * 1000;
+let stallTimer: ReturnType<typeof setInterval> | undefined;
+let lastProgressAt = 0;
+let lastProgressSignature = '';
+
+function stallLimitMs(): number {
+	// Development only (e2e tests shorten it); production always uses 2 minutes.
+	if (import.meta.env.DEV) {
+		try {
+			const override = Number(localStorage.getItem('wbr-model-stall-ms'));
+			if (override > 0) return override;
+		} catch {
+			// storage unavailable: use the default
+		}
+	}
+	return MODEL_STALL_MS;
+}
+
+function stopStallWatch() {
+	if (stallTimer) clearInterval(stallTimer);
+	stallTimer = undefined;
+}
+
+function noteModelProgress(signature: string) {
+	if (signature !== lastProgressSignature) {
+		lastProgressSignature = signature;
+		lastProgressAt = Date.now();
+	}
+}
+
+function startStallWatch() {
+	stopStallWatch();
+	lastProgressAt = Date.now();
+	lastProgressSignature = '';
+	stallTimer = setInterval(() => {
+		if (!isModelLoading) {
+			stopStallWatch();
+			return;
+		}
+		if (Date.now() - lastProgressAt > stallLimitMs()) handleModelStall();
+	}, 1000);
+}
+
+/**
+ * Gives up on a stuck load: the worker (and its hanging download) is dropped,
+ * so Retry starts a brand new worker. Files already fully downloaded stay in
+ * the browser cache and are reused.
+ */
+function handleModelStall() {
+	stopStallWatch();
+	const message = m.transcription_model_stalled();
+	terminateWorker();
+	isModelLoading = false;
+	modelLoadProgress = 0;
+	modelError = message;
+	for (const pending of pendingTranscriptions.values()) {
+		pending.reject(new Error(message));
+	}
+	pendingTranscriptions.clear();
+}
+
 // Pending transcription callbacks
 const pendingTranscriptions = new Map<
 	string,
@@ -47,13 +112,18 @@ function initWorker(): Worker {
 		switch (message.type) {
 			case 'progress':
 				modelLoadProgress = message.progress;
+				noteModelProgress(
+					`${message.status}|${message.file}|${message.loaded}|${message.progress}`,
+				);
 				break;
 			case 'model-ready':
+				stopStallWatch();
 				isModelReady = true;
 				isModelLoading = false;
 				modelLoadProgress = 100;
 				break;
 			case 'model-error':
+				stopStallWatch();
 				modelError = message.error;
 				isModelLoading = false;
 				break;
@@ -202,6 +272,7 @@ export function preloadModel(): void {
 	isModelLoading = true;
 	modelError = null;
 	modelLoadProgress = 0;
+	startStallWatch();
 
 	const w = initWorker();
 	w.postMessage({ type: 'load-model' });
@@ -270,6 +341,7 @@ export async function transcribeAudio(
 		isModelLoading = true;
 		modelError = null;
 		modelLoadProgress = 0;
+		startStallWatch();
 	}
 
 	try {
@@ -329,6 +401,7 @@ export function isTranscriptionSupported(): boolean {
  * Terminate the worker (cleanup)
  */
 export function terminateWorker(): void {
+	stopStallWatch();
 	if (worker) {
 		worker.terminate();
 		worker = null;

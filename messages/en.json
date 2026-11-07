@@ -480,5 +480,6 @@
   "chat_storage_recover": "Recover from marker…",
   "chat_storage_recover_confirm": "Use the chat storage in {path}? Only the settings file is rewritten from that folder's marker. Nothing is copied or deleted.",
   "chat_storage_recover_action": "Recover",
-  "chat_storage_open_cryptomator": "Open Cryptomator"
+  "chat_storage_open_cryptomator": "Open Cryptomator",
+  "transcription_model_stalled": "The model download stalled. Check your internet connection and try again."
 }
