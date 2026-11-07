@@ -479,5 +479,6 @@
   "chat_storage_create_default_action": "Create folder",
   "chat_storage_recover": "Recover from marker…",
   "chat_storage_recover_confirm": "Use the chat storage in {path}? Only the settings file is rewritten from that folder's marker. Nothing is copied or deleted.",
-  "chat_storage_recover_action": "Recover"
+  "chat_storage_recover_action": "Recover",
+  "chat_storage_open_cryptomator": "Open Cryptomator"
 }

@@ -17,6 +17,24 @@ const canCreateDefault = $derived(
 	problem === 'unavailable' && status?.reason === 'missing' && status.isDefault,
 );
 
+const canOfferCryptomator = $derived(
+	problem === 'unavailable' && !configCorrupt && status?.isDefault === false,
+);
+
+// "Open Cryptomator": only for a custom location that is unavailable, and only
+// if the app is installed. Cryptomator stays optional: no hint to install it.
+let cryptomatorInstalled = $state(false);
+$effect(() => {
+	cryptomatorInstalled = false;
+	if (!api || !canOfferCryptomator) return;
+	window.electronAPI?.cryptomator?.isInstalled().then((installed) => {
+		cryptomatorInstalled = installed;
+	});
+});
+async function openCryptomator() {
+	await window.electronAPI?.cryptomator?.open();
+}
+
 let step = $state<'idle' | 'confirm-create' | 'confirm-recover'>('idle');
 let recoverDir = $state<string | null>(null);
 let errorText = $state<string | null>(null);
@@ -110,6 +128,11 @@ async function recover() {
 				{#if canCreateDefault}
 					<Button variant="secondary" size="sm" onclick={() => (step = 'confirm-create')}>
 						{m.chat_storage_create_default()}
+					</Button>
+				{/if}
+				{#if canOfferCryptomator && cryptomatorInstalled}
+					<Button variant="secondary" size="sm" onclick={openCryptomator}>
+						{m.chat_storage_open_cryptomator()}
 					</Button>
 				{/if}
 				{#if configCorrupt}

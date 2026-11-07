@@ -479,5 +479,6 @@
   "chat_storage_create_default_action": "Buat folder",
   "chat_storage_recover": "Pulihkan dari penanda…",
   "chat_storage_recover_confirm": "Pakai penyimpanan chat di {path}? Hanya file pengaturan yang ditulis ulang dari penanda folder itu. Tidak ada yang disalin atau dihapus.",
-  "chat_storage_recover_action": "Pulihkan"
+  "chat_storage_recover_action": "Pulihkan",
+  "chat_storage_open_cryptomator": "Buka Cryptomator"
 }

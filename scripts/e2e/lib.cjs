@@ -39,8 +39,8 @@ fs.copyFileSync(
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-async function launch(profile) {
-	const env = { ...process.env, NODE_ENV: 'development' };
+async function launch(profile, extraEnv = {}) {
+	const env = { ...process.env, NODE_ENV: 'development', ...extraEnv };
 	// Set by some terminals/editors; would make Electron start as plain Node.
 	delete env.ELECTRON_RUN_AS_NODE;
 	const app = await _electron.launch({

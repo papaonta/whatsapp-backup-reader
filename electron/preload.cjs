@@ -36,6 +36,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
 		},
 	},
 
+	// Optional: open the Cryptomator app (only if installed) to unlock a vault.
+	cryptomator: {
+		isInstalled: () => ipcRenderer.invoke('cryptomator:isInstalled'),
+		open: () => ipcRenderer.invoke('cryptomator:open'),
+	},
+
 	// Clears cookies, service workers and Cache Storage only
 	clearSiteData: () => ipcRenderer.invoke('siteData:clear'),
 

@@ -26,6 +26,7 @@ const {
 } = require('./lib/extract-zip.cjs');
 
 const { createChatStorage } = require('./lib/chat-storage.cjs');
+const { findCryptomator } = require('./lib/cryptomator.cjs');
 
 let mainWindow;
 
@@ -715,6 +716,30 @@ ipcMain.handle('chatStorage:recover', async (_event, dir) => {
 			error: error instanceof Error ? error.message : String(error),
 		};
 	}
+});
+
+// Optional "Open Cryptomator" helper. The path is always detected here, never
+// taken from the renderer, and only the app is opened: no vault password is
+// ever requested, stored or forwarded. WBR_CRYPTOMATOR_PATH replaces the
+// standard locations in development (used by the e2e tests).
+const detectCryptomator = () =>
+	findCryptomator({
+		override:
+			process.env.NODE_ENV === 'development'
+				? process.env.WBR_CRYPTOMATOR_PATH
+				: undefined,
+	});
+
+ipcMain.handle(
+	'cryptomator:isInstalled',
+	async () => detectCryptomator() !== null,
+);
+
+ipcMain.handle('cryptomator:open', async () => {
+	const appPath = detectCryptomator();
+	if (!appPath) return { success: false };
+	const error = await shell.openPath(appPath);
+	return { success: error === '' };
 });
 
 ipcMain.handle('chatStorage:cancelMove', async () => chatStorage.cancelMove());

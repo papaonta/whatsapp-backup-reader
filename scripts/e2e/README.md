@@ -22,5 +22,6 @@ npm run test:e2e -- 03 04     # only files whose name contains 03 or 04
 | `06-transcription-model-cache` | Whisper model survives restart (needs internet once, skipped otherwise) |
 | `07-chat-storage-location` | chat storage: locked vault, markers, move/cancel/failure, reconnect, restore default |
 | `08-chat-storage-recovery` | fresh install, create default folder, corrupt config recovery, merge/import locked (other computer, during a move) |
+| `09-cryptomator-button` | optional "Open Cryptomator" button in the unavailable-storage banner |
 
 Tests reach UI elements by their English labels, so run them with the app in English (the default when the system language isn't Indonesian).

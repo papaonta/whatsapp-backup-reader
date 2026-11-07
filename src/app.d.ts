@@ -144,6 +144,10 @@ interface ElectronAPI {
 			callback: (progress: ChatStorageMoveProgress) => void,
 		) => () => void;
 	};
+	cryptomator: {
+		isInstalled: () => Promise<boolean>;
+		open: () => Promise<{ success: boolean }>;
+	};
 	clearSiteData: () => Promise<{ success: boolean; error?: string }>;
 	readFileFromPath: (filePath: string) => Promise<FileReadResult>;
 	openExternal: (url: string) => Promise<void>;
