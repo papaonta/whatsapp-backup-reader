@@ -3,8 +3,10 @@
  * (under the OS temp folder, never the real app data). Starts the Vite dev
  * server itself if it isn't already running on port 5173.
  *
- *   npm run test:e2e                 all tests (~3-4 minutes)
+ *   npm run test:e2e                 every test EXCEPT the slow, internet-dependent ones (06, 10)
+ *   npm run test:e2e:full            every test (needed before a release)
  *   npm run test:e2e -- 03 04        only tests whose file name contains 03 or 04
+ *                                    (naming a slow test explicitly runs it)
  */
 const { spawn, spawnSync } = require('node:child_process');
 const fs = require('node:fs');
@@ -38,11 +40,20 @@ const isUp = () =>
 		});
 	});
 
-const filters = process.argv.slice(2);
+const args = process.argv.slice(2);
+const full = args.includes('--full');
+const filters = args.filter((a) => a !== '--full');
+// Slow tests that also need internet (model download). Skipped unless --full
+// or named explicitly.
+const SLOW = ['06-', '10-'];
 const tests = fs
 	.readdirSync(__dirname)
 	.filter((f) => /^\d\d-.*\.cjs$/.test(f))
-	.filter((f) => filters.length === 0 || filters.some((x) => f.includes(x)))
+	.filter((f) =>
+		filters.length > 0
+			? filters.some((x) => f.includes(x))
+			: full || !SLOW.some((x) => f.startsWith(x)),
+	)
 	.sort();
 
 const runTest = (file) =>

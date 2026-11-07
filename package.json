@@ -43,6 +43,7 @@
 		"electron:dev:test": "node scripts/electron-test.cjs",
 		"electron:dev:test:fresh": "node scripts/electron-test.cjs --fresh",
 		"test:e2e": "node scripts/e2e/run.cjs",
+		"test:e2e:full": "node scripts/e2e/run.cjs --full",
 		"electron:build": "npm run build && electron-builder",
 		"electron:build:mac": "npm run build && electron-builder --mac",
 		"electron:build:win": "npm run build && electron-builder --win",

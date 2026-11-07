@@ -3,8 +3,9 @@
 These tests run the real desktop app (dev mode) with Playwright against **isolated profiles** in the OS temp folder (`whats-reader-e2e/`). Your real app data is never used.
 
 ```bash
-npm run test:e2e              # all tests (about 16 minutes)
-npm run test:e2e -- 03 04     # only files whose name contains 03 or 04
+npm run test:e2e              # all tests except 06 and 10 (slow, need internet); must pass before every push
+npm run test:e2e:full         # all tests incl. 06 and 10 (about 16 minutes); must pass before a release
+npm run test:e2e -- 03 04     # only files whose name contains 03 or 04 (naming 06 or 10 runs it too)
 ```
 
 - Needs Electron installed (`node node_modules/electron/install.js` if it isn't).

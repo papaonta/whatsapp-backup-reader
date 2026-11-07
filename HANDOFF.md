@@ -21,7 +21,8 @@ remote "upstream" = rodrigogs/whats-reader (read-only).
 - Redesain 6 fase selesai (lihat "Riwayat redesain" di bawah). Sejak itu pekerjaan berupa Task bernomor dari owner (Task 1–4c), semua tercatat di "Log pekerjaan".
 - `origin/main` sudah memuat sampai Task 4b (`caf128f`). **Task 4c (lokasi penyimpanan chat) ada di commit lokal, BELUM di-push** (owner: "Jangan push").
 - Yang sudah ada untuk keamanan data: tidak ada hapus/ekstrak ulang otomatis, hapus folder yatim hanya manual, link luar dibuka di browser bawaan, auto-lock berhenti selama dialog file/impor panjang, model Whisper tidak ikut terhapus saat startup, dan (Task 4c) penyimpanan chat bisa dipindah ke folder lain (mis. brankas Cryptomator) dengan banner + pengaman bila tidak tersedia.
-- Tes otomatis: `npm run test:e2e` (Electron + profil terisolasi, lihat `scripts/e2e/README.md`). Lint/check/build harus 0 error 0 warning sebelum commit.
+- Tes otomatis (Electron + profil terisolasi, lihat `scripts/e2e/README.md`). Lint/check/build harus 0 error 0 warning sebelum commit.
+- **Konvensi tes:** `npm run test:e2e` = semua tes KECUALI 06 dan 10 (lambat, butuh internet); wajib lolos sebelum setiap push. `npm run test:e2e:full` = semua tes; wajib lolos sebelum rilis.
 - Belum dikerjakan / diketahui: PIN hanya penghalang UI (data tidak terenkripsi), unduh model Whisper menghubungi huggingface.co (perilaku upstream), bagian khusus Windows di Task 4c belum teruji (lihat log Task 4c), screenshot README masih UI lama.
 - Langkah berikut ditentukan owner (uji manual sendiri, lalu Task berikutnya). Jangan mulai fitur baru tanpa diminta.
 
