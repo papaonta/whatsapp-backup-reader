@@ -22,7 +22,7 @@ remote "upstream" = rodrigogs/whats-reader (read-only).
 - `origin/main` sudah memuat sampai Task 4b (`caf128f`). **Task 4c (lokasi penyimpanan chat) ada di commit lokal, BELUM di-push** (owner: "Jangan push").
 - Yang sudah ada untuk keamanan data: tidak ada hapus/ekstrak ulang otomatis, hapus folder yatim hanya manual, link luar dibuka di browser bawaan, auto-lock berhenti selama dialog file/impor panjang, model Whisper tidak ikut terhapus saat startup, dan (Task 4c) penyimpanan chat bisa dipindah ke folder lain (mis. brankas Cryptomator) dengan banner + pengaman bila tidak tersedia.
 - Tes otomatis: `npm run test:e2e` (Electron + profil terisolasi, lihat `scripts/e2e/README.md`). Lint/check/build harus 0 error 0 warning sebelum commit.
-- Belum dikerjakan / diketahui: PIN hanya penghalang UI (data tidak terenkripsi), skrip `machine-translate` di `package.json` + sebutannya di `.github/copilot-instructions.md` masih ada, unduh model Whisper menghubungi huggingface.co (perilaku upstream), bagian khusus Windows di Task 4c belum teruji (lihat log Task 4c), screenshot README masih UI lama.
+- Belum dikerjakan / diketahui: PIN hanya penghalang UI (data tidak terenkripsi), unduh model Whisper menghubungi huggingface.co (perilaku upstream), bagian khusus Windows di Task 4c belum teruji (lihat log Task 4c), screenshot README masih UI lama.
 - Langkah berikut ditentukan owner (uji manual sendiri, lalu Task berikutnya). Jangan mulai fitur baru tanpa diminta.
 
 ## Tujuan & keputusan
@@ -44,12 +44,11 @@ remote "upstream" = rodrigogs/whats-reader (read-only).
 
 ## Backlog
 
-Belum dikerjakan; urutan bukan prioritas. (Huruf c = upgrade Electron/dependency, selesai di Task 5 dan dihapus.)
+Belum dikerjakan; urutan bukan prioritas. (Huruf a, c, e sudah selesai dan dihapus: Task 7 dan Task 5.)
 
-- **a.** Tombol "Buka Cryptomator" di banner "penyimpanan chat tidak tersedia".
+- **Rilis v1.1.0 TERTUNDA**: akun GitHub papaonta terkunci karena masalah billing, jadi job Actions tidak dimulai ("The job was not started because your account is locked due to a billing issue"). Tiket Support #4966070. Setelah akun pulih: jalankan ulang CI di main, hapus draft kosong v1.0.0 (tag tetap), jalankan workflow Release, periksa aset (.exe x64, DMG arm64, latest.yml, latest-mac.yml), ganti body rilis dengan ringkasan EN + ID, lalu `git pull`.
 - **b.** Rilis publik: rilis lama kemungkinan berstatus draft (badge README "no releases"), dan badge CI "no status".
 - **d.** Fase berbagi ke teman: Cryptomator tetap opsional, panduan peringatan SmartScreen/Gatekeeper, pertimbangan nama tanpa kata "WhatsApp".
-- **e.** Bersih-bersih: skrip `machine-translate` (di `package.json`) dan `.github/copilot-instructions.md`.
 - **f.** Kandidat jangka panjang: enkripsi bawaan app.
 
 ## Riwayat redesain 6 fase (status per 2026-08-18 commit `a24f783`, tidak diperbarui)
@@ -723,6 +722,24 @@ Commit lokal (BELUM di-push): `chore: standardise on Node 26 LTS`, `fix(deps): u
 - **Audit:** 62 (1 critical, 18 high, 38 moderate, 5 low) -> 45 (0 critical, 0 high, 40 moderate, 5 low). Sisa semuanya alat build/CI (minimatch/glob DoS di electron-builder dan semantic-release/npm, deepmerge, rantai @sveltejs low), tidak ikut terbundel ke app.
 - **Tes:** `test:e2e` penuh 107 PASS di Electron 45 (tes 06 model Whisper termasuk). Tes 02 (PIN) disesuaikan: memakai event DOM `blur` (bukan `BrowserWindow.blur()` yang bergantung fokus OS jendela). Transkripsi nyata voice note diuji manual via script (model ter-load, hasil keluar ±50 dtk). DMG dibangun lokal (`CSC_IDENTITY_AUTO_DISCOVERY=false npm run electron:build:mac`), `hdiutil verify` valid, app hasil build dibuka dengan profil terisolasi: impor chat contoh, voice note dimuat lewat `media://`, status penyimpanan ok.
 - Catatan: tes 06 sekali timeout 10 menit di satu run penuh Electron 45 (model tidak sampai "Transcribing..."), tidak terulang di 3 run berikutnya; dugaan: jaringan/huggingface, belum terbukti.
+
+### 2026-11-07 - Task 6 (tahap A-B): alur rilis publik v1.1.0
+
+Rilis BELUM terbit (lihat Backlog: akun GitHub terkunci). Tidak ada tag, workflow Release, atau rilis yang dijalankan/dibuat.
+
+- **Temuan:** v1.0.0 hanya draft kosong, v1.0.1 hanya tag (tanpa rilis). Build terakhir (23 Okt 2026) gagal di linux-x64 karena `.deb` butuh email maintainer; satu job gagal membuat langkah Publish dilewati dan langkah Cleanup menghapus draft. Badge "no releases" karena belum ada rilis published; badge CI "no status" karena `ci.yml` hanya jalan untuk branch `dev` (fork hanya punya `main`).
+- **Versi berikutnya:** 1.1.0 (commit-analyzer semantic-release, offline, atas 433 commit sejak v1.0.1; ada 60 `feat`).
+- **Perubahan** (`4b021f7`, `eb627b4`, `a31f251`, sudah di-push): CI juga jalan di push ke `main`; rilis di-publish hanya bila `.exe` Windows x64, DMG arm64, `latest.yml`, `latest-mac.yml` terpasang; build gagal tidak lagi menghapus draft; matriks tanpa mac-x64 dan win-arm64 (metadata auto-update saling menimpa); `build.linux.maintainer` = email noreply; kegagalan trigger Pages tidak menggagalkan rilis publik; README memuat syarat sistem (macOS 13+ Apple Silicon, Windows 10+ x64).
+- **Hambatan:** setelah push, CI main gagal dalam 4 detik: "The job was not started because your account is locked due to a billing issue." Bukan masalah kode. Langkah rilis ditunda.
+- Keputusan owner: Mac update manual (installer belum ditandatangani), Windows auto-update; body rilis v1.1.0 diganti ringkasan singkat EN + ID (bukan 433 commit) setelah rilis terbit; draft kosong v1.0.0 dihapus (tag tetap).
+
+### 2026-11-07 - Task 7: tombol "Buka Cryptomator" + bersih-bersih
+
+- **Tombol** di banner "penyimpanan chat tidak tersedia": hanya bila lokasi = kustom (bukan default), status `unavailable` (bukan config rusak), DAN Cryptomator terdeteksi di main process (`electron/lib/cryptomator.cjs`: Mac `/Applications/Cryptomator.app`; Windows `%ProgramFiles%\Cryptomator\Cryptomator.exe`, BELUM teruji di Windows). Cryptomator tetap opsional: tidak terdeteksi = tidak ada tombol dan tidak ada pesan agar memasang. Klik hanya `shell.openPath` pada path yang dideteksi main (renderer tidak mengirim path); app tidak pernah meminta, menyimpan, atau meneruskan password brankas.
+- **Alur buka kunci:** pengguna membuka kunci di Cryptomator lalu kembali ke WBR; pengecekan ulang saat fokus yang sudah ada memulihkan chat (dites dengan event `focus` sintetis, bukan fokus OS sungguhan).
+- **Tes:** `09-cryptomator-button` (5 cek). Di tes, `WBR_CRYPTOMATOR_PATH` (hanya berlaku saat `NODE_ENV=development`) menggantikan path standar, dan `shell.openPath` diganti perekam agar tidak membuka aplikasi sungguhan.
+- **Tes 06 (model Whisper) tidak stabil di run penuh:** timeout "model did not load in 10 minutes" terjadi di 2 dari 5 run penuh sejak Electron 45 (sendiri selalu lolos). Penyebab belum diketahui (dugaan: jaringan/huggingface.co atau kondisi setelah tes-tes sebelumnya). Perlu diselidiki bila terus berulang.
+- **Bersih-bersih:** skrip `machine-translate`, dependency `@inlang/cli` (hanya dipakai skrip itu), dan `.github/copilot-instructions.md` dihapus. Sisa sebutan hanya di log HANDOFF dan aturan "jangan machine-translate" di `CLAUDE.md`.
 
 ## Working conventions established across sessions (don't relitigate)
 
