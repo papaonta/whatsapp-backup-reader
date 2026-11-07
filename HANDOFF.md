@@ -750,6 +750,14 @@ Tes 06 timeout "model did not load in 10 minutes" 2 kali di run penuh (satu di E
 - **Celah app (bukan penyebab terbukti):** `src/lib/transcription.svelte.ts` tidak punya timeout atau retry untuk pemuatan model; unduhan yang macet tanpa error membuat UI "Loading" selamanya sampai app dibuka ulang. Usulan (belum dikerjakan): timeout pemuatan (mis. 3-5 menit tanpa kemajuan) yang memunculkan `modelError` sehingga tombol Retry muncul.
 - **Perubahan tes (chore):** 06 kini mencatat semua request model-host (status, durasi, error), log console/pageerror, memori proses, dan mencetak `DIAG ...` saat timeout; batas tunggu 5 menit. Bila timeout terulang, log run penuh langsung berisi buktinya. Retry otomatis di tes SENGAJA tidak ditambah agar tidak menutupi kemungkinan bug app.
 
+### 2026-11-08 - Task 7c: batas waktu pemuatan model transkripsi
+
+- **Perilaku baru** (`src/lib/transcription.svelte.ts`, `src/lib/workers/transcription-worker.ts`): watchdog "tidak ada kemajuan". Worker kini meneruskan `file` dan `loaded` (byte) di pesan progres; kemajuan = tanda tangan (tahap, file, byte, persen) berubah. Bila TIDAK berubah selama **2 menit** selama model dimuat, percobaan dihentikan: worker di-`terminate`, `modelError` diisi, semua transkripsi yang menunggu ditolak dengan pesan yang sama sehingga tombol Retry tampil. **Tidak ada batas waktu total**: unduhan lambat yang tetap bergerak dibiarkan selesai.
+- **Retry:** memulai worker baru (worker lama dibuang bersama unduhannya). File model yang sudah selesai terunduh tetap di Cache Storage dan dipakai ulang; file yang terputus di tengah diunduh ulang (transformers.js hanya menyimpan file utuh).
+- **Pesan:** `transcription_model_stalled` di en.json dan id.json ("Unduhan model terhenti. Periksa koneksi internet lalu coba lagi.").
+- **Hook khusus pengembangan:** `localStorage['wbr-model-stall-ms']` memendekkan batas, hanya bila `import.meta.env.DEV`; build produksi selalu 2 menit.
+- **Tes:** `10-model-load-stall` (6 cek, ±6 menit, butuh internet; di-SKIP bila huggingface.co tak terjangkau). Server stub lokal di depan huggingface.co (dialihkan oleh main process di tes saja) bisa menahan, memperlambat, atau meneruskan respons. Hasil: tertahan -> Retry muncul 121 dtk (tidak sebelum 100 dtk); lambat tapi bergerak 60 dtk dengan batas 20 dtk -> TIDAK dihentikan; bergerak lalu macet -> dihentikan; server normal -> Retry berhasil memuat model.
+
 ## Working conventions established across sessions (don't relitigate)
 
 - New i18n keys: add to both `messages/en.json` and `messages/id.json`
