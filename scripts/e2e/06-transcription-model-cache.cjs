@@ -9,22 +9,68 @@ const { launch, sleep, S } = require('./lib.cjs');
 const ok = (name, cond, detail = '') =>
 	console.log(cond ? 'PASS' : 'FAIL', name, detail);
 const P = `${S}/profile-model`;
+let currentApp;
 const ZIP = `${S}/zips/ios-private-chat.zip`;
 const text = async (page) =>
 	(await page.locator('body').innerText()).replace(/\s+/g, ' ');
 
+// Records every model-host request (start, status, duration, errors) so a
+// timeout can be diagnosed from the log instead of guessed at.
+const consoleLog = [];
+const watchPage = (page) => {
+	page.on('console', (m) => {
+		const t = m.text();
+		if (/Security Warning|Policy set|this app|electronjs/.test(t)) return;
+		if (/error|fail|warn|abort|timeout|network/i.test(t)) {
+			consoleLog.push(`${m.type()}: ${t.slice(0, 200)}`);
+		}
+	});
+	page.on('pageerror', (e) => consoleLog.push(`pageerror: ${String(e).slice(0, 200)}`));
+};
+const dumpDiagnostics = async (app, page) => {
+	const net = await app.evaluate(() => global.__net ?? []).catch(() => []);
+	const mem = await app
+		.evaluate(({ app: a }) =>
+			a.getAppMetrics().map((x) => `${x.type}:${Math.round(x.memory.workingSetSize / 1024)}MB`).join(' '),
+		)
+		.catch(() => '?');
+	const ui = (await text(page).catch(() => '')).match(/(Loading|Download|Transcrib|Retry|Model)[^A-Z]{0,50}/g);
+	console.log('DIAG ui:', JSON.stringify(ui));
+	console.log('DIAG memory:', mem);
+	console.log(`DIAG model-host requests: ${net.length}; last 25:`, JSON.stringify(net.slice(-25)));
+	console.log('DIAG console:', JSON.stringify(consoleLog.slice(-15)));
+};
+
 const hookModelRequests = (app) =>
 	app.evaluate(({ session }) => {
 		global.__hf = [];
-		session.defaultSession.webRequest.onBeforeRequest(
-			{
-				urls: ['*://huggingface.co/*', '*://*.huggingface.co/*', '*://*.hf.co/*'],
-			},
-			(details, callback) => {
-				global.__hf.push(details.url);
-				callback({});
-			},
-		);
+		global.__net = [];
+		const filter = {
+			urls: ['*://huggingface.co/*', '*://*.huggingface.co/*', '*://*.hf.co/*'],
+		};
+		const t0 = Date.now();
+		const starts = new Map();
+		const wr = session.defaultSession.webRequest;
+		wr.onBeforeRequest(filter, (d, cb) => {
+			global.__hf.push(d.url);
+			starts.set(d.id, Date.now());
+			cb({});
+		});
+		wr.onCompleted(filter, (d) => {
+			global.__net.push({
+				at: Date.now() - t0,
+				ms: Date.now() - (starts.get(d.id) || Date.now()),
+				status: d.statusCode,
+				url: d.url.split('/').slice(-2).join('/').slice(0, 60),
+			});
+		});
+		wr.onErrorOccurred(filter, (d) => {
+			global.__net.push({
+				at: Date.now() - t0,
+				error: d.error,
+				url: d.url.split('/').slice(-2).join('/').slice(0, 60),
+			});
+		});
 	});
 const modelRequests = (app) => app.evaluate(() => global.__hf.length);
 const cacheEntries = (page) =>
@@ -59,7 +105,7 @@ async function loadModelViaTranscription(page) {
 	await domClick('Click to load audio');
 	await sleep(1500);
 	await domClick('Transcribe audio');
-	for (let i = 0; i < 600; i++) {
+	for (let i = 0; i < 300; i++) {
 		await sleep(1000);
 		const t = await text(page);
 		if (/Transcribing\.\.\./.test(t) || /\(No speech detected\)/.test(t)) return;
@@ -67,7 +113,8 @@ async function loadModelViaTranscription(page) {
 			throw new Error(`model/transcription failed (Retry shown): ${t.slice(-160)}`);
 		}
 	}
-	throw new Error('model did not load in 10 minutes');
+	await dumpDiagnostics(currentApp, page);
+	throw new Error('model did not load in 5 minutes');
 }
 
 (async () => {
@@ -84,6 +131,8 @@ async function loadModelViaTranscription(page) {
 
 	fs.rmSync(P, { recursive: true, force: true });
 	let { app, page } = await launch(P);
+	currentApp = app;
+	watchPage(page);
 	await sleep(2000);
 	await page.evaluate(
 		() =>
@@ -121,6 +170,8 @@ async function loadModelViaTranscription(page) {
 	await app.close();
 	await sleep(1500);
 	({ app, page } = await launch(P));
+	currentApp = app;
+	watchPage(page);
 	await sleep(5000);
 	cache = await cacheEntries(page);
 	ok('model: still cached after restart (startup cleanup left it)', cache.total > 0, JSON.stringify(cache));
