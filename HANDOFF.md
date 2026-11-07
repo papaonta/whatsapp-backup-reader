@@ -738,8 +738,17 @@ Rilis BELUM terbit (lihat Backlog: akun GitHub terkunci). Tidak ada tag, workflo
 - **Tombol** di banner "penyimpanan chat tidak tersedia": hanya bila lokasi = kustom (bukan default), status `unavailable` (bukan config rusak), DAN Cryptomator terdeteksi di main process (`electron/lib/cryptomator.cjs`: Mac `/Applications/Cryptomator.app`; Windows `%ProgramFiles%\Cryptomator\Cryptomator.exe`, BELUM teruji di Windows). Cryptomator tetap opsional: tidak terdeteksi = tidak ada tombol dan tidak ada pesan agar memasang. Klik hanya `shell.openPath` pada path yang dideteksi main (renderer tidak mengirim path); app tidak pernah meminta, menyimpan, atau meneruskan password brankas.
 - **Alur buka kunci:** pengguna membuka kunci di Cryptomator lalu kembali ke WBR; pengecekan ulang saat fokus yang sudah ada memulihkan chat (dites dengan event `focus` sintetis, bukan fokus OS sungguhan).
 - **Tes:** `09-cryptomator-button` (5 cek). Di tes, `WBR_CRYPTOMATOR_PATH` (hanya berlaku saat `NODE_ENV=development`) menggantikan path standar, dan `shell.openPath` diganti perekam agar tidak membuka aplikasi sungguhan.
-- **Tes 06 (model Whisper) tidak stabil di run penuh:** timeout "model did not load in 10 minutes" terjadi di 2 dari 5 run penuh sejak Electron 45 (sendiri selalu lolos). Penyebab belum diketahui (dugaan: jaringan/huggingface.co atau kondisi setelah tes-tes sebelumnya). Perlu diselidiki bila terus berulang.
+- **Tes 06 (model Whisper):** lihat Task 7b di bawah (timeout sporadis, belum direproduksi).
 - **Bersih-bersih:** skrip `machine-translate`, dependency `@inlang/cli` (hanya dipakai skrip itu), dan `.github/copilot-instructions.md` dihapus. Sisa sebutan hanya di log HANDOFF dan aturan "jangan machine-translate" di `CLAUDE.md`.
+
+### 2026-11-08 - Task 7b: timeout tes 06 (model Whisper)
+
+Tes 06 timeout "model did not load in 10 minutes" 2 kali di run penuh (satu di Electron 45 sebelum transformers 4, satu di Task 7); sendiri selalu lolos.
+
+- **Reproduksi (±55 menit):** 4 putaran `05` lalu 06 terinstrumentasi (jaringan huggingface per request: status/durasi/error, log console, memori), ditambah 3 run penuh berurutan dengan diagnostik permanen. **Semua sehat: 7 dari 7 run, 112 PASS tiap run penuh, 0 timeout.** Pola sehat: unduhan model 40-50 dtk (±26-28 request, semua 200/206 dalam ±35 ms), muat dari cache setelah restart 2 dtk, memori renderer naik ke ±1,3 GB saat inferensi.
+- **Penyebab: BELUM DIKETAHUI.** Tidak ada bukti untuk (a) lingkungan maupun (b) bug app. Dugaan terkuat (a): unduhan huggingface.co yang macet/lambat sekali-sekali (dua kali timeout tanpa "Retry" = unduhan tidak error, tidak selesai). Tidak ada log dari dua kegagalan itu, jadi tidak terbukti.
+- **Celah app (bukan penyebab terbukti):** `src/lib/transcription.svelte.ts` tidak punya timeout atau retry untuk pemuatan model; unduhan yang macet tanpa error membuat UI "Loading" selamanya sampai app dibuka ulang. Usulan (belum dikerjakan): timeout pemuatan (mis. 3-5 menit tanpa kemajuan) yang memunculkan `modelError` sehingga tombol Retry muncul.
+- **Perubahan tes (chore):** 06 kini mencatat semua request model-host (status, durasi, error), log console/pageerror, memori proses, dan mencetak `DIAG ...` saat timeout; batas tunggu 5 menit. Bila timeout terulang, log run penuh langsung berisi buktinya. Retry otomatis di tes SENGAJA tidak ditambah agar tidak menutupi kemungkinan bug app.
 
 ## Working conventions established across sessions (don't relitigate)
 
